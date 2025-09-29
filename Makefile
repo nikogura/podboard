@@ -28,11 +28,10 @@ test-integration: ## Run integration tests with mocks
 test-integration-real: ## Run integration tests against real infrastructure
 	@echo "⚠️  Running tests against real infrastructure!"
 	@echo "Required environment variables:"
-	@echo "  - FFCTL_REAL_TEST=true"
+	@echo "  - PODBOARD_REAL_TEST=true"
 	@echo "  - PODBOARD_SERVER_URL (optional, defaults to http://localhost:9999)"
-	@echo "  - FFCTL_OIDC_TOKEN (OIDC token for authentication)"
-	@echo "  - VAULT_ADDR (Vault server address)"
-	@echo "  - VAULT_TOKEN (Vault token, or will read ~/.vault-token)"
+	@echo "  - KUBERNETES_CONFIG (path to kubeconfig, defaults to ~/.kube/config)"
+	@echo "  - NAMESPACE (default namespace, defaults to 'default')"
 	@echo ""
 	PODBOARD_REAL_TEST=true go test -v ./test -run TestPodboardRealInfrastructure
 
