@@ -211,7 +211,7 @@ jobs:
         chmod +x $INSTALL_DIR/podboard
 
         # Test that the installed binary works
-        $INSTALL_DIR/podboard --version
+        $INSTALL_DIR/podboard --help > /dev/null
         echo "✅ Installation script validation completed"
       timeout-minutes: 5
 
