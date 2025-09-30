@@ -23,8 +23,11 @@ SOFTWARE.
 package test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -39,7 +42,10 @@ func TestInstallScript(t *testing.T) {
 		t.Skip("Install script tests require PODBOARD_INSTALL_TEST=true")
 	}
 
-	scriptPath := "../install.sh"
+	// Get the directory of the current test file and go up one level to project root
+	_, filename, _, _ := runtime.Caller(0)
+	testDir := filepath.Dir(filename)
+	scriptPath := filepath.Join(testDir, "..", "install.sh")
 
 	// Check if install script exists
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -64,14 +70,15 @@ func TestInstallScript(t *testing.T) {
 
 	t.Run("platform_detection", func(t *testing.T) {
 		// Test the detect_platform function by extracting it
-		script := `
-			cd ..
+		scriptDir := filepath.Dir(scriptPath)
+		script := fmt.Sprintf(`
+			cd %s
 			# Extract the detect_platform function and run it standalone
 			sed -n '/^detect_platform()/,/^}/p' ./install.sh > /tmp/detect_platform.sh
 			echo "detect_platform" >> /tmp/detect_platform.sh
 			bash /tmp/detect_platform.sh
 			rm -f /tmp/detect_platform.sh
-		`
+		`, scriptDir)
 
 		cmd := exec.Command("bash", "-c", script)
 		output, err := cmd.Output()
@@ -112,15 +119,16 @@ func TestInstallScript(t *testing.T) {
 
 	t.Run("environment_variables", func(t *testing.T) {
 		// Test that important environment variables are used correctly
-		script := `
+		scriptDir := filepath.Dir(scriptPath)
+		script := fmt.Sprintf(`
 			export INSTALL_DIR="/tmp/test-install"
-			cd ..
+			cd %s
 			# Extract variable definitions without running main
 			grep -E '^(REPO=|BINARY_NAME=|INSTALL_DIR=)' ./install.sh || true
 			echo "INSTALL_DIR_TEST: ${INSTALL_DIR:-/usr/local/bin}"
 			echo "BINARY_NAME_TEST: podboard"
 			echo "REPO_TEST: nikogura/podboard"
-		`
+		`, scriptDir)
 
 		cmd := exec.Command("bash", "-c", script)
 		output, err := cmd.Output()
