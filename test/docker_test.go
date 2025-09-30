@@ -53,15 +53,43 @@ func TestDockerImage(t *testing.T) {
 	}
 
 	t.Run("image_exists", func(t *testing.T) {
+		// First try to inspect locally
 		cmd := exec.Command("docker", "inspect", imageName)
 		err := cmd.Run()
-		require.NoError(t, err, "Docker image should exist")
+
+		if err != nil {
+			// If image doesn't exist locally, try to pull it
+			t.Logf("Image not found locally, attempting to pull %s", imageName)
+			pullCmd := exec.Command("docker", "pull", imageName)
+			pullErr := pullCmd.Run()
+			require.NoError(t, pullErr, "Should be able to pull Docker image %s", imageName)
+
+			// Try inspect again after pulling
+			cmd = exec.Command("docker", "inspect", imageName)
+			err = cmd.Run()
+		}
+
+		require.NoError(t, err, "Docker image should exist after pull if needed")
 	})
 
 	t.Run("image_metadata", func(t *testing.T) {
+		// First try to inspect locally
 		cmd := exec.Command("docker", "inspect", "--format", "{{.Config.ExposedPorts}}", imageName)
 		output, err := cmd.Output()
-		require.NoError(t, err, "Should be able to inspect image")
+
+		if err != nil {
+			// If image doesn't exist locally, try to pull it
+			t.Logf("Image not found locally, attempting to pull %s", imageName)
+			pullCmd := exec.Command("docker", "pull", imageName)
+			pullErr := pullCmd.Run()
+			require.NoError(t, pullErr, "Should be able to pull Docker image %s", imageName)
+
+			// Try inspect again after pulling
+			cmd = exec.Command("docker", "inspect", "--format", "{{.Config.ExposedPorts}}", imageName)
+			output, err = cmd.Output()
+		}
+
+		require.NoError(t, err, "Should be able to inspect image after pull if needed")
 
 		outputStr := string(output)
 		assert.Contains(t, outputStr, "9999/tcp", "Image should expose port 9999")
@@ -70,6 +98,15 @@ func TestDockerImage(t *testing.T) {
 	t.Run("container_starts", func(t *testing.T) {
 		// Create a unique container name
 		containerName := fmt.Sprintf("podboard-test-%d", time.Now().Unix())
+
+		// Ensure image is available locally (docker run will pull if needed, but let's be explicit)
+		inspectCmd := exec.Command("docker", "inspect", imageName)
+		if inspectCmd.Run() != nil {
+			t.Logf("Image not found locally, pulling %s", imageName)
+			pullCmd := exec.Command("docker", "pull", imageName)
+			pullErr := pullCmd.Run()
+			require.NoError(t, pullErr, "Should be able to pull Docker image %s", imageName)
+		}
 
 		// Start container
 		cmd := exec.Command("docker", "run", "-d", "--name", containerName, "-p", "19998:9999", imageName)
@@ -145,9 +182,9 @@ func TestDockerCompose(t *testing.T) {
 
 		// Try docker compose (new) first, then docker-compose (legacy)
 		if _, err := exec.LookPath("docker"); err == nil {
-			cmd = exec.Command("docker", "compose", "-f", "docker-compose.yml", "config")
+			cmd = exec.Command("docker", "compose", "-f", "../docker-compose.yml", "config")
 		} else {
-			cmd = exec.Command("docker-compose", "-f", "docker-compose.yml", "config")
+			cmd = exec.Command("docker-compose", "-f", "../docker-compose.yml", "config")
 		}
 
 		err := cmd.Run()
@@ -161,9 +198,9 @@ func TestDockerCompose(t *testing.T) {
 			var cmd *exec.Cmd
 
 			if _, err := exec.LookPath("docker"); err == nil {
-				cmd = exec.Command("docker", "compose", "-f", "docker-compose.yml", "config", "--services")
+				cmd = exec.Command("docker", "compose", "-f", "../docker-compose.yml", "config", "--services")
 			} else {
-				cmd = exec.Command("docker-compose", "-f", "docker-compose.yml", "config", "--services")
+				cmd = exec.Command("docker-compose", "-f", "../docker-compose.yml", "config", "--services")
 			}
 
 			output, err := cmd.Output()
