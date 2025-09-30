@@ -24,8 +24,8 @@ package test
 
 import (
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -33,6 +33,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // getK8sDir returns the path to the k8s directory relative to the project root
@@ -45,16 +46,79 @@ func getK8sDir() string {
 	return filepath.Join(testDir, "..", "k8s")
 }
 
+// validateYAMLFile validates that a file contains valid YAML and basic Kubernetes resource structure
+func validateYAMLFile(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Split by document separator for multi-document YAML
+	documents := strings.Split(string(content), "---")
+
+	for i, doc := range documents {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue // Skip empty documents
+		}
+
+		// Skip documents that are entirely commented out
+		lines := strings.Split(doc, "\n")
+		hasNonCommentLine := false
+		for _, line := range lines {
+			trimmedLine := strings.TrimSpace(line)
+			if trimmedLine != "" && !strings.HasPrefix(trimmedLine, "#") {
+				hasNonCommentLine = true
+				break
+			}
+		}
+		if !hasNonCommentLine {
+			continue // Skip documents that are entirely comments
+		}
+
+		var yamlDoc map[string]interface{}
+		if err := yaml.Unmarshal([]byte(doc), &yamlDoc); err != nil {
+			return fmt.Errorf("invalid YAML in document %d: %w", i+1, err)
+		}
+
+		// Basic Kubernetes resource validation
+		if kind, exists := yamlDoc["kind"]; !exists {
+			return fmt.Errorf("document %d missing required 'kind' field", i+1)
+		} else if kindStr, ok := kind.(string); !ok || kindStr == "" {
+			return fmt.Errorf("document %d 'kind' field must be a non-empty string", i+1)
+		}
+
+		if apiVersion, exists := yamlDoc["apiVersion"]; !exists {
+			return fmt.Errorf("document %d missing required 'apiVersion' field", i+1)
+		} else if apiVersionStr, ok := apiVersion.(string); !ok || apiVersionStr == "" {
+			return fmt.Errorf("document %d 'apiVersion' field must be a non-empty string", i+1)
+		}
+
+		if metadata, exists := yamlDoc["metadata"]; !exists {
+			return fmt.Errorf("document %d missing required 'metadata' field", i+1)
+		} else if metadataMap, ok := metadata.(map[string]interface{}); !ok {
+			return fmt.Errorf("document %d 'metadata' field must be an object", i+1)
+		} else if name, exists := metadataMap["name"]; !exists {
+			return fmt.Errorf("document %d metadata missing required 'name' field", i+1)
+		} else if nameStr, ok := name.(string); !ok || nameStr == "" {
+			return fmt.Errorf("document %d metadata 'name' field must be a non-empty string", i+1)
+		}
+	}
+
+	return nil
+}
+
 // TestKubernetesManifests tests that Kubernetes manifests are valid
 func TestKubernetesManifests(t *testing.T) {
 	// Skip if not in K8s testing mode
 	if os.Getenv("PODBOARD_K8S_TEST") != "true" {
 		t.Skip("Kubernetes manifest tests require PODBOARD_K8S_TEST=true")
-	}
-
-	// Check if kubectl is available
-	if _, err := exec.LookPath("kubectl"); err != nil {
-		t.Skip("kubectl not available, skipping Kubernetes manifest tests")
 	}
 
 	k8sDir := getK8sDir()
@@ -75,16 +139,12 @@ func TestKubernetesManifests(t *testing.T) {
 				t.Skipf("Manifest %s not found, skipping", manifestPath)
 			}
 
-			// Validate YAML syntax with kubectl (client-side only, no server required)
-			cmd := exec.Command("kubectl", "apply", "--dry-run=client", "--validate=false", "-f", manifestPath)
-			output, err := cmd.CombinedOutput()
+			// Validate YAML syntax only (no Kubernetes API server required)
+			// Use yq or built-in YAML validation instead of kubectl
+			err := validateYAMLFile(manifestPath)
+			require.NoError(t, err, "Manifest %s should be valid YAML", manifest)
 
-			require.NoError(t, err, "Manifest %s should be valid YAML: %s", manifest, string(output))
-
-			outputStr := string(output)
-			if strings.Contains(outputStr, "created") || strings.Contains(outputStr, "configured") {
-				t.Logf("Manifest %s validated successfully", manifest)
-			}
+			t.Logf("Manifest %s validated successfully", manifest)
 		})
 	}
 }
@@ -248,10 +308,7 @@ func TestAllInOneManifest(t *testing.T) {
 			"All-in-one manifest should contain %s", resource)
 	}
 
-	// Validate with kubectl (client-side only, no server required)
-	if _, err := exec.LookPath("kubectl"); err == nil {
-		cmd := exec.Command("kubectl", "apply", "--dry-run=client", "--validate=false", "-f", manifestPath)
-		output, err := cmd.CombinedOutput()
-		require.NoError(t, err, "All-in-one manifest should be valid: %s", string(output))
-	}
+	// Validate YAML syntax and structure
+	err = validateYAMLFile(manifestPath)
+	require.NoError(t, err, "All-in-one manifest should be valid YAML")
 }
