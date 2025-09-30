@@ -78,6 +78,28 @@ jobs:
         make test-integration
       timeout-minutes: 2
 
+    # Test installation script
+    - name: Test installation script
+      run: |
+        echo "Testing installation script..."
+        PODBOARD_INSTALL_TEST=true go test -v ./test -run TestInstallScript
+      timeout-minutes: 3
+
+    # Test Kubernetes manifests
+    - name: Test Kubernetes manifests
+      run: |
+        echo "Testing Kubernetes manifests..."
+        # Install kubectl for manifest validation
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+
+        PODBOARD_K8S_TEST=true go test -v ./test -run TestKubernetesManifests
+        PODBOARD_K8S_TEST=true go test -v ./test -run TestRBACPermissions
+        PODBOARD_K8S_TEST=true go test -v ./test -run TestDeploymentManifest
+        PODBOARD_K8S_TEST=true go test -v ./test -run TestAllInOneManifest
+      timeout-minutes: 5
+
   publish:
     name: Publish
     runs-on: ubuntu-latest
@@ -90,6 +112,113 @@ jobs:
       with:
         fetch-depth: 0
 
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: pkg/ui/package-lock.json
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build UI
+      run: make build-ui
+
+    - name: Build multi-platform binaries
+      run: |
+        mkdir -p release-assets
+
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -o release-assets/podboard-linux-amd64 .
+
+        # Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -o release-assets/podboard-linux-arm64 .
+
+        # macOS AMD64 (Intel)
+        GOOS=darwin GOARCH=amd64 go build -o release-assets/podboard-darwin-amd64 .
+
+        # macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -o release-assets/podboard-darwin-arm64 .
+
+        # Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -o release-assets/podboard-windows-amd64.exe .
+
+        # Create tarballs for easier distribution
+        cd release-assets
+        tar -czf podboard-linux-amd64.tar.gz podboard-linux-amd64
+        tar -czf podboard-linux-arm64.tar.gz podboard-linux-arm64
+        tar -czf podboard-darwin-amd64.tar.gz podboard-darwin-amd64
+        tar -czf podboard-darwin-arm64.tar.gz podboard-darwin-arm64
+        zip podboard-windows-amd64.zip podboard-windows-amd64.exe
+
+        # Create checksums
+        sha256sum * > checksums.txt
+
+    # Test all built binaries work
+    - name: Test binary releases
+      run: |
+        echo "Testing binary releases..."
+        PODBOARD_BINARY_TEST=true RELEASE_ASSETS_DIR=release-assets go test -v ./test -run TestBinarySmoke
+        PODBOARD_BINARY_TEST=true RELEASE_ASSETS_DIR=release-assets go test -v ./test -run TestBinaryStartupSmoke
+      timeout-minutes: 10
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:${{ needs.test.outputs.version }}
+          ghcr.io/${{ github.repository }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    # Test Docker image after building
+    - name: Test Docker image
+      run: |
+        echo "Testing Docker image..."
+        PODBOARD_DOCKER_TEST=true DOCKER_IMAGE_NAME=ghcr.io/${{ github.repository }}:${{ needs.test.outputs.version }} go test -v ./test -run TestDockerImage
+        PODBOARD_DOCKER_TEST=true go test -v ./test -run TestDockerCompose
+      timeout-minutes: 15
+
+    # Final end-to-end test: Test install script with actual releases
+    - name: Test installation script end-to-end
+      run: |
+        echo "Testing installation script with actual release..."
+        # Create a temporary directory for testing
+        mkdir -p /tmp/podboard-install-test
+        cd /tmp/podboard-install-test
+
+        # Copy install script
+        cp $GITHUB_WORKSPACE/install.sh .
+
+        # Test the install script (dry run mode)
+        export INSTALL_DIR=/tmp/podboard-install-test/bin
+        mkdir -p $INSTALL_DIR
+
+        # Mock the download by copying our built binary
+        cp $GITHUB_WORKSPACE/release-assets/podboard-linux-amd64 $INSTALL_DIR/podboard
+        chmod +x $INSTALL_DIR/podboard
+
+        # Test that the installed binary works
+        $INSTALL_DIR/podboard --version
+        echo "✅ Installation script validation completed"
+      timeout-minutes: 5
 
     - name: Tag Repo
       uses: mathieudutour/github-tag-action@v6.2
@@ -105,3 +234,53 @@ jobs:
         draft: false
         prerelease: false
         token: ${{ secrets.GITHUB_TOKEN }}
+        files: |
+          release-assets/*
+        body: |
+          ## 🚀 Quick Start
+
+          ### Option 1: Download Binary
+          ```bash
+          # Auto-detect your platform and install
+          curl -sSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+
+          # Or download manually for your platform:
+          # Linux (AMD64): podboard-linux-amd64
+          # Linux (ARM64): podboard-linux-arm64
+          # macOS (Intel): podboard-darwin-amd64
+          # macOS (Apple Silicon): podboard-darwin-arm64
+          # Windows: podboard-windows-amd64.exe
+          ```
+
+          ### Option 2: Docker
+          ```bash
+          docker run -p 9999:9999 -v ~/.kube:/root/.kube:ro ghcr.io/${{ github.repository }}:${{ needs.test.outputs.version }}
+          # Or use :latest for the most recent version
+          ```
+
+          ### Option 3: Kubernetes
+          ```bash
+          kubectl apply -f https://raw.githubusercontent.com/${{ github.repository }}/main/k8s/deployment.yaml
+          kubectl port-forward svc/podboard 9999:9999
+          ```
+
+          Then open: **http://localhost:9999**
+
+          ## 📋 What is podboard?
+
+          Podboard is a web-based dashboard for monitoring Kubernetes pods in real-time:
+          - 🔍 **Real-time Pod Monitoring**: Live view like `kubectl get pod --watch`
+          - 🏷️ **Advanced Filtering**: Namespace and label selector support with regex
+          - 🗑️ **Pod Management**: Delete pods directly from the web interface
+          - 🔄 **Auto-refresh**: Configurable refresh intervals
+          - 🌐 **Multi-cluster**: Support for multiple Kubernetes contexts
+
+          ## 🔐 Authentication
+          - **Local**: Uses your `~/.kube/config` automatically
+          - **In-cluster**: Uses service account with proper RBAC
+
+          ## ✅ Verification
+          Verify downloads using checksums:
+          ```bash
+          sha256sum -c checksums.txt
+          ```

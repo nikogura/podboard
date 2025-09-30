@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podboard
+  namespace: default
+  labels:
+    app: podboard
+    component: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podboard
+  template:
+    metadata:
+      labels:
+        app: podboard
+        component: dashboard
+    spec:
+      serviceAccountName: podboard
+      containers:
+      - name: podboard
+        image: ghcr.io/nikogura/podboard:latest
+        ports:
+        - containerPort: 9999
+          name: http
+          protocol: TCP
+        env:
+        # Optional: Set default namespace
+        - name: NAMESPACE
+          value: "default"
+        # Optional: Set domain for cookies
+        - name: DOMAIN
+          value: "podboard.local"
+        # Health check endpoint
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Resource limits
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "10m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534 # nobody user
+          capabilities:
+            drop:
+            - ALL

@@ -12,37 +12,53 @@ A web-based dashboard for monitoring Kubernetes pods in real-time, providing a v
 - 🌐 **Multi-Cluster**: Cluster selector for multi-cluster environments
 - 🐳 **Docker Ready**: Single binary with embedded web UI
 
-## Installation
+## 🚀 Quick Start (30 seconds)
 
-### Go Install (Recommended)
+### Option 1: Installation Script (Recommended)
+Auto-detects your platform and installs the latest version:
+```bash
+curl -sSL https://raw.githubusercontent.com/nikogura/podboard/main/install.sh | sh
+```
+
+### Option 2: Docker
+```bash
+# With your existing kubeconfig
+docker run -p 9999:9999 -v ~/.kube:/root/.kube:ro ghcr.io/nikogura/podboard:latest
+
+# Or with docker-compose
+curl -O https://raw.githubusercontent.com/nikogura/podboard/main/docker-compose.yml
+docker-compose up
+```
+
+### Option 3: Download Binary
+```bash
+# Linux (AMD64)
+curl -L https://github.com/nikogura/podboard/releases/latest/download/podboard-linux-amd64 -o podboard
+chmod +x podboard && sudo mv podboard /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/nikogura/podboard/releases/latest/download/podboard-darwin-amd64 -o podboard
+chmod +x podboard && sudo mv podboard /usr/local/bin/
+
+# macOS (Apple Silicon)
+curl -L https://github.com/nikogura/podboard/releases/latest/download/podboard-darwin-arm64 -o podboard
+chmod +x podboard && sudo mv podboard /usr/local/bin/
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/nikogura/podboard/releases/latest/download/podboard-windows-amd64.exe" -OutFile "podboard.exe"
+```
+
+### Option 4: Go Install
+If you have a Go development environment:
 ```bash
 go install github.com/nikogura/podboard@latest
 ```
 
-### Binary Download
-Download pre-built binaries from the [releases page](https://github.com/nikogura/podboard/releases).
+**Then open:** http://localhost:9999
 
-### Docker
-```bash
-docker run -p 9999:9999 ghcr.io/nikogura/podboard:latest
-```
+---
 
-## Quick Start
-
-### Local Development
-```bash
-# Uses ~/.kube/config automatically
-podboard
-
-# Custom port and domain
-podboard --bind-address=0.0.0.0:8080 --domain=podboard.example.com
-```
-
-### Kubernetes Deployment
-```bash
-# Deploy with service account
-kubectl apply -f k8s/
-```
+## Usage
 
 ## Configuration
 

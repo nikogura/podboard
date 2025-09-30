@@ -164,3 +164,9 @@ jspm_packages/
 pkg/ui/dist/
 pkg/ui/.next/
 pkg/ui/node_modules/
+
+# Release build artifacts (created during CI/CD, should not be committed)
+release-assets/
+*.tar.gz
+*.zip
+checksums.txt

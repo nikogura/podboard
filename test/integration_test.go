@@ -34,8 +34,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestPodboardBasicAPI tests the basic podboard API endpoints
-func TestPodboardBasicAPI(t *testing.T) {
+// TestPodboardIntegration tests the basic podboard API endpoints
+func TestPodboardIntegration(t *testing.T) {
 	logger := zap.NewNop()
 
 	t.Run("Health endpoint", func(t *testing.T) {

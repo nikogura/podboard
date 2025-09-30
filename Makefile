@@ -1,4 +1,4 @@
-.PHONY: build build-ui build-go test test-integration test-integration-real clean docker-build docker-push help
+.PHONY: build build-ui build-go test test-integration test-integration-real test-binary test-docker test-k8s test-install test-all clean docker-build docker-push help
 
 # Variables
 BINARY_NAME=podboard
@@ -56,3 +56,36 @@ dev-ui: ## Start UI development server
 lint: ## Run linters
 	golangci-lint run
 	cd pkg/ui && npm run lint
+
+test-binary: build ## Test built binaries (requires PODBOARD_BINARY_TEST=true)
+	@echo "Testing binary releases..."
+	@echo "Set PODBOARD_BINARY_TEST=true to enable binary tests"
+	PODBOARD_BINARY_TEST=true RELEASE_ASSETS_DIR=release-assets go test -v ./test -run TestBinarySmoke
+	PODBOARD_BINARY_TEST=true RELEASE_ASSETS_DIR=release-assets go test -v ./test -run TestBinaryStartupSmoke
+
+test-docker: ## Test Docker functionality (requires PODBOARD_DOCKER_TEST=true)
+	@echo "Testing Docker image and compose..."
+	@echo "Set PODBOARD_DOCKER_TEST=true to enable Docker tests"
+	PODBOARD_DOCKER_TEST=true go test -v ./test -run TestDockerImage
+	PODBOARD_DOCKER_TEST=true go test -v ./test -run TestDockerCompose
+
+test-k8s: ## Test Kubernetes manifests (requires PODBOARD_K8S_TEST=true)
+	@echo "Testing Kubernetes manifests..."
+	@echo "Set PODBOARD_K8S_TEST=true to enable K8s tests"
+	PODBOARD_K8S_TEST=true go test -v ./test -run TestKubernetesManifests
+	PODBOARD_K8S_TEST=true go test -v ./test -run TestRBACPermissions
+	PODBOARD_K8S_TEST=true go test -v ./test -run TestDeploymentManifest
+	PODBOARD_K8S_TEST=true go test -v ./test -run TestAllInOneManifest
+
+test-install: ## Test installation script (requires PODBOARD_INSTALL_TEST=true)
+	@echo "Testing installation script..."
+	@echo "Set PODBOARD_INSTALL_TEST=true to enable install script tests"
+	PODBOARD_INSTALL_TEST=true go test -v ./test -run TestInstallScript
+
+test-all: test test-integration ## Run all available tests (requires environment variables for comprehensive tests)
+	@echo "Running comprehensive test suite..."
+	@echo "Note: Set PODBOARD_*_TEST=true environment variables to enable specific test suites"
+	-PODBOARD_BINARY_TEST=true RELEASE_ASSETS_DIR=release-assets go test -v ./test -run TestBinarySmoke
+	-PODBOARD_DOCKER_TEST=true go test -v ./test -run TestDockerImage
+	-PODBOARD_K8S_TEST=true go test -v ./test -run TestKubernetesManifests
+	-PODBOARD_INSTALL_TEST=true go test -v ./test -run TestInstallScript

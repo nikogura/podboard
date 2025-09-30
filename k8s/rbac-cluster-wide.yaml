@@ -1,0 +1,68 @@
+# ⚠️  CLUSTER-WIDE RBAC FOR PODBOARD - USE WITH CAUTION ⚠️
+#
+# WARNING: This configuration grants pod deletion permissions across ALL namespaces
+#
+# Security Implications:
+# - Allows deleting pods in system namespaces (kube-system, kube-public, etc.)
+# - Could disrupt critical cluster services if used incorrectly
+# - Intended for cluster administrators or dedicated monitoring environments only
+#
+# Recommendation: Use rbac-namespace-restricted.yaml instead unless cluster-wide
+# administrative access is explicitly required
+#
+# ⚠️  PROCEED ONLY IF YOU UNDERSTAND THE SECURITY IMPLICATIONS ⚠️
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: podboard
+  namespace: default
+---
+# ⚠️ DANGEROUS: Cluster-wide pod management permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: podboard-cluster-admin
+  # Add warning labels for visibility
+  labels:
+    security-risk: "high"
+    permissions: "cluster-wide-pod-delete"
+    warning: "grants-dangerous-permissions"
+rules:
+# Namespace discovery
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list"]
+# ⚠️ DANGEROUS: Pod operations across ALL namespaces
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "delete"]
+  # Note: This applies to ALL namespaces including:
+  # - kube-system (critical cluster components)
+  # - kube-public (cluster info)
+  # - kube-node-lease (node heartbeats)
+  # - Any application namespaces
+---
+# ⚠️ DANGEROUS: Bind cluster-wide permissions to service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: podboard-cluster-admin
+  # Add warning labels for visibility
+  labels:
+    security-risk: "high"
+    permissions: "cluster-wide-pod-delete"
+    warning: "grants-dangerous-permissions"
+  annotations:
+    # Add warnings in annotations for audit trails
+    security.podboard.io/warning: "Grants cluster-wide pod deletion permissions"
+    security.podboard.io/risk-level: "HIGH"
+    security.podboard.io/recommendation: "Use rbac-namespace-restricted.yaml instead"
+subjects:
+- kind: ServiceAccount
+  name: podboard
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: podboard-cluster-admin
+  apiGroup: rbac.authorization.k8s.io

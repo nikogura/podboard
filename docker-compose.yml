@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  podboard:
+    image: ghcr.io/nikogura/podboard:latest
+    container_name: podboard
+    ports:
+      - "9999:9999"
+    volumes:
+      # Mount your local kubeconfig for authentication
+      - ~/.kube:/root/.kube:ro
+      # Optional: mount custom kubeconfig location
+      # - /path/to/your/kubeconfig:/root/.kube/config:ro
+    # Optional environment variables (uncomment as needed)
+    # environment:
+    #   - NAMESPACE=default
+    #   - DOMAIN=localhost
+    restart: unless-stopped
+
+    # Optional: Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Optional: If you want to run in a custom network
+# networks:
+#   podboard-net:
+#     driver: bridge
