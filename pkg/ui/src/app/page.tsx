@@ -57,7 +57,9 @@ export default function HomePage() {
     const fetchNamespaces = async () => {
       try {
         const response = await api.getNamespaces(selectedCluster || undefined);
-        setNamespaces(response.namespaces);
+        // Add "all" as the first option
+        const namespacesWithAll = ['all', ...response.namespaces];
+        setNamespaces(namespacesWithAll);
         setError(null);
 
         // Auto-set namespace to "default" if available, otherwise first namespace
@@ -86,7 +88,7 @@ export default function HomePage() {
 
         // If we have no namespaces at all, set a fallback
         if (namespaces.length === 0) {
-          setNamespaces(['default']);
+          setNamespaces(['all', 'default']);
           setSelectedNamespace('default');
         }
       }
@@ -132,13 +134,29 @@ export default function HomePage() {
   }
 
   const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'running': return '#28a745';
-      case 'pending': return '#ffc107';
-      case 'failed': case 'error': return '#dc3545';
-      case 'succeeded': return '#28a745';
-      default: return '#6c757d';
+    const statusLower = status.toLowerCase();
+
+    // Success states
+    if (statusLower === 'running' || statusLower === 'succeeded' || statusLower === 'completed') {
+      return '#28a745';
     }
+
+    // Error states
+    if (statusLower === 'failed' || statusLower === 'error' ||
+        statusLower.includes('crashloopbackoff') || statusLower.includes('crash') ||
+        statusLower.includes('backoff')) {
+      return '#dc3545';
+    }
+
+    // Warning states (pending or waiting)
+    if (statusLower === 'pending' || statusLower === 'containercreating' ||
+        statusLower.includes('pull') || statusLower.includes('waiting') ||
+        statusLower === 'terminating') {
+      return '#ffc107';
+    }
+
+    // Unknown/other states
+    return '#6c757d';
   };
 
   const handleDeletePod = async (pod: PodInfo) => {
@@ -300,6 +318,9 @@ export default function HomePage() {
           <thead>
             <tr style={{ backgroundColor: "var(--table-header-bg)" }}>
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Name</th>
+              {selectedNamespace === 'all' && (
+                <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Namespace</th>
+              )}
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Version</th>
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Status</th>
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Ready</th>
@@ -316,6 +337,9 @@ export default function HomePage() {
                 borderTop: index > 0 ? "1px solid var(--border-color)" : "none"
               }}>
                 <td style={{ padding: "0.75rem", fontFamily: "monospace" }}>{pod.name || '-'}</td>
+                {selectedNamespace === 'all' && (
+                  <td style={{ padding: "0.75rem", fontFamily: "monospace", fontSize: "0.875rem" }}>{pod.namespace || '-'}</td>
+                )}
                 <td style={{ padding: "0.75rem", fontFamily: "monospace", fontSize: "0.875rem", color: "var(--text-muted)" }}>{pod.imageTag || '-'}</td>
                 <td style={{ padding: "0.75rem" }}>
                   <span style={{

@@ -65,10 +65,17 @@ func NewPodService(kubeConfigService *KubeConfigService, logger *zap.Logger) *Po
 
 // GetPods retrieves pods from the specified namespace with optional label selector and cluster.
 // Supports regex patterns in label selectors using the =~ operator (e.g., "app=~nginx.*").
+// Use namespace="all" to retrieve pods from all namespaces.
 func (ps *PodService) GetPods(ctx context.Context, clusterName, namespace, labelSelector string) ([]PodInfo, error) {
 	client, err := ps.getClient(clusterName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Kubernetes client: %w", err)
+	}
+
+	// Handle "all" namespace by using empty string for Kubernetes API
+	queryNamespace := namespace
+	if namespace == "all" {
+		queryNamespace = ""
 	}
 
 	var pods *corev1.PodList
@@ -76,7 +83,7 @@ func (ps *PodService) GetPods(ctx context.Context, clusterName, namespace, label
 	// Check if this is a regex selector
 	if strings.Contains(labelSelector, "=~") {
 		// For regex selectors, we need to fetch all pods and filter manually
-		pods, err = client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+		pods, err = client.CoreV1().Pods(queryNamespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			ps.logger.Error("Failed to list pods for regex filtering", zap.Error(err), zap.String("cluster", clusterName), zap.String("namespace", namespace))
 			return nil, fmt.Errorf("failed to list pods: %w", err)
@@ -88,7 +95,7 @@ func (ps *PodService) GetPods(ctx context.Context, clusterName, namespace, label
 			listOptions.LabelSelector = labelSelector
 		}
 
-		pods, err = client.CoreV1().Pods(namespace).List(ctx, listOptions)
+		pods, err = client.CoreV1().Pods(queryNamespace).List(ctx, listOptions)
 		if err != nil {
 			ps.logger.Error("Failed to list pods", zap.Error(err), zap.String("cluster", clusterName), zap.String("namespace", namespace), zap.String("labelSelector", labelSelector))
 			return nil, fmt.Errorf("failed to list pods: %w", err)
@@ -188,11 +195,8 @@ func (ps *PodService) podToPodInfo(pod *corev1.Pod) PodInfo {
 	age := time.Since(pod.CreationTimestamp.Time)
 	ageStr := formatDuration(age)
 
-	// Get pod status
-	status := string(pod.Status.Phase)
-	if pod.DeletionTimestamp != nil {
-		status = "Terminating"
-	}
+	// Get pod status - check container states for more accurate status
+	status := ps.getPodStatus(pod)
 
 	// Extract image tag from first container
 	imageTag := extractImageTag(pod)
@@ -209,6 +213,51 @@ func (ps *PodService) podToPodInfo(pod *corev1.Pod) PodInfo {
 		IP:        pod.Status.PodIP,
 		Labels:    pod.Labels,
 	}
+}
+
+// getPodStatus returns the most accurate status for a pod by checking container states.
+// This provides more detailed status than just the pod phase (e.g., CrashLoopBackOff, ImagePullBackOff).
+func (ps *PodService) getPodStatus(pod *corev1.Pod) (status string) {
+	// Check if pod is being deleted
+	if pod.DeletionTimestamp != nil {
+		status = "Terminating"
+		return status
+	}
+
+	// Start with the pod phase
+	status = string(pod.Status.Phase)
+
+	// For pods that are "Running" but have container issues, check container states
+	// to provide more detailed status information
+	if pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending {
+		// Check init containers first
+		for _, containerStatus := range pod.Status.InitContainerStatuses {
+			if containerStatus.State.Waiting != nil && containerStatus.State.Waiting.Reason != "" {
+				status = containerStatus.State.Waiting.Reason
+				return status
+			}
+			if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "" {
+				status = containerStatus.State.Terminated.Reason
+				return status
+			}
+		}
+
+		// Check regular containers
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			// Waiting state (e.g., CrashLoopBackOff, ImagePullBackOff, ContainerCreating)
+			if containerStatus.State.Waiting != nil && containerStatus.State.Waiting.Reason != "" {
+				status = containerStatus.State.Waiting.Reason
+				return status
+			}
+			// Terminated state (e.g., Error, Completed)
+			if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "" {
+				status = containerStatus.State.Terminated.Reason
+				return status
+			}
+		}
+	}
+
+	return status
 }
 
 // extractImageTag extracts the tag from the container images in the pod.
