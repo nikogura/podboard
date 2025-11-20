@@ -48,13 +48,11 @@ chmod +x podboard && sudo mv podboard /usr/local/bin/
 Invoke-WebRequest -Uri "https://github.com/nikogura/podboard/releases/latest/download/podboard-windows-amd64.exe" -OutFile "podboard.exe"
 ```
 
-### Option 4: Go Install
-If you have a Go development environment:
-```bash
-go install github.com/nikogura/podboard@latest
-```
-
 **Then open:** http://localhost:9999
+
+---
+
+**Note:** `go install` is not supported due to embedded UI assets that must be built separately. Use the installation script, Docker, or pre-built binaries instead.
 
 ---
 
