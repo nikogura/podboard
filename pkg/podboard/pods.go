@@ -236,8 +236,14 @@ func (ps *PodService) getPodStatus(pod *corev1.Pod) (status string) {
 				status = containerStatus.State.Waiting.Reason
 				return status
 			}
-			if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "" {
-				status = containerStatus.State.Terminated.Reason
+			// Only report terminated init containers if they failed (non-zero exit code)
+			// Successfully completed init containers (exitCode 0) are expected behavior
+			if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.ExitCode != 0 {
+				if containerStatus.State.Terminated.Reason != "" {
+					status = containerStatus.State.Terminated.Reason
+				} else {
+					status = "InitError"
+				}
 				return status
 			}
 		}
