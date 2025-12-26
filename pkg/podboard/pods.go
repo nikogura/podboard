@@ -255,10 +255,19 @@ func (ps *PodService) getPodStatus(pod *corev1.Pod) (status string) {
 				status = containerStatus.State.Waiting.Reason
 				return status
 			}
-			// Terminated state (e.g., Error, Completed)
-			if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "" {
-				status = containerStatus.State.Terminated.Reason
-				return status
+			// Terminated state - report all terminated containers as they indicate problems
+			// (except for successfully completed sidecar/ephemeral containers)
+			if containerStatus.State.Terminated != nil {
+				// Only report if it's a failure (non-zero exit) or if there's a specific error reason
+				// Skip "Completed" status for sidecar containers that exited successfully
+				if containerStatus.State.Terminated.ExitCode != 0 {
+					if containerStatus.State.Terminated.Reason != "" {
+						status = containerStatus.State.Terminated.Reason
+					} else {
+						status = "Error"
+					}
+					return status
+				}
 			}
 		}
 	}
