@@ -26,10 +26,11 @@ import (
 	"os"
 )
 
-
-func homeDir() string {
+func homeDir() (dir string) {
 	if h := os.Getenv("HOME"); h != "" {
-		return h
+		dir = h
+		return dir
 	}
-	return os.Getenv("USERPROFILE") // Windows
+	dir = os.Getenv("USERPROFILE") // Windows
+	return dir
 }

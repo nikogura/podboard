@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { SimpleLayout } from '@/components/SimpleLayout';
-import type { PodInfo, ClusterInfo } from '@/types';
-import { api, ApiError } from '@/lib/api';
 
-export default function HomePage() {
+import { SimpleLayout } from '@/components/SimpleLayout';
+import { api, ApiError } from '@/lib/api';
+import type { PodInfo, ClusterInfo } from '@/types';
+
+export default function HomePage(): React.ReactElement {
   const [pods, setPods] = useState<PodInfo[]>([]);
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
@@ -20,7 +21,7 @@ export default function HomePage() {
 
   // Fetch clusters and initialize on mount
   useEffect(() => {
-    const initializeApp = async () => {
+    const initializeApp = async (): Promise<void> => {
       try {
         // First, get clusters
         const clustersResponse = await api.getClusters();
@@ -52,9 +53,9 @@ export default function HomePage() {
 
   // Fetch namespaces when cluster changes
   useEffect(() => {
-    if (loading) return;
+    if (loading) {return;}
 
-    const fetchNamespaces = async () => {
+    const fetchNamespaces = async (): Promise<void> => {
       try {
         const response = await api.getNamespaces(selectedCluster || undefined);
         // Add "all" as the first option
@@ -116,11 +117,11 @@ export default function HomePage() {
 
   // Initial pod fetch and interval setup
   useEffect(() => {
-    if (loading) return;
+    if (loading) {return;}
 
     fetchPods();
     const interval = setInterval(fetchPods, refreshInterval * 1000);
-    return () => clearInterval(interval);
+    return (): void => clearInterval(interval);
   }, [selectedCluster, selectedNamespace, selectedLabelFilter, refreshInterval, loading, fetchPods]);
 
   if (loading) {
@@ -133,7 +134,7 @@ export default function HomePage() {
     );
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): string => {
     const statusLower = status.toLowerCase();
 
     // Success states
@@ -159,7 +160,7 @@ export default function HomePage() {
     return '#6c757d';
   };
 
-  const handleDeletePod = async (pod: PodInfo) => {
+  const handleDeletePod = async (pod: PodInfo): Promise<void> => {
     if (!confirm(`Are you sure you want to delete pod ${pod.name}?`)) {
       return;
     }

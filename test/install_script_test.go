@@ -35,7 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInstallScript tests the installation script functionality
+// TestInstallScript tests the installation script functionality.
 func TestInstallScript(t *testing.T) {
 	// Skip if not in install script testing mode
 	if os.Getenv("PODBOARD_INSTALL_TEST") != "true" {
@@ -48,7 +48,8 @@ func TestInstallScript(t *testing.T) {
 	scriptPath := filepath.Join(testDir, "..", "install.sh")
 
 	// Check if install script exists
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+	_, statErr := os.Stat(scriptPath)
+	if os.IsNotExist(statErr) {
 		t.Skipf("Install script %s not found, skipping", scriptPath)
 	}
 
@@ -65,7 +66,7 @@ func TestInstallScript(t *testing.T) {
 		require.NoError(t, err, "Should be able to stat install script")
 
 		mode := info.Mode()
-		assert.True(t, mode&0111 != 0, "Install script should be executable")
+		assert.NotEqual(t, os.FileMode(0), mode&0111, "Install script should be executable")
 	})
 
 	t.Run("platform_detection", func(t *testing.T) {

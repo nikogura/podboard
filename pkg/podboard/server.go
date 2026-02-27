@@ -31,7 +31,7 @@ import (
 )
 
 // RunServer starts the podboard web server.
-func RunServer(address, domain string, logger *zap.Logger) error {
+func RunServer(address, domain string, logger *zap.Logger) (err error) {
 	gin.SetMode(gin.ReleaseMode)
 
 	domain = getDomainFromEnvOrDefault(domain)
@@ -52,21 +52,23 @@ func RunServer(address, domain string, logger *zap.Logger) error {
 
 	runErr := router.Run(address)
 	if runErr != nil {
-		return fmt.Errorf("failed to start server: %w", runErr)
+		err = fmt.Errorf("failed to start server: %w", runErr)
+		return err
 	}
 
-	return nil
+	return err
 }
 
-func getDomainFromEnvOrDefault(domain string) string {
-	if domain == "" {
-		domain = os.Getenv("DOMAIN")
+func getDomainFromEnvOrDefault(domain string) (result string) {
+	result = domain
+	if result == "" {
+		result = os.Getenv("DOMAIN")
 	}
-	return domain
+	return result
 }
 
-func setupRouter() *gin.Engine {
-	router := gin.New()
+func setupRouter() (router *gin.Engine) {
+	router = gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
@@ -139,4 +141,3 @@ func setupAPIRoutes(router *gin.Engine, podService *PodService, kubeConfigServic
 		c.JSON(200, gin.H{"message": "Pod deleted successfully"})
 	})
 }
-

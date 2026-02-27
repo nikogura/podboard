@@ -37,7 +37,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBinarySmoke tests that built binaries actually work
+// TestBinarySmoke tests that built binaries actually work.
 func TestBinarySmoke(t *testing.T) {
 	// Skip if not in binary testing mode
 	if os.Getenv("PODBOARD_BINARY_TEST") != "true" {
@@ -49,7 +49,7 @@ func TestBinarySmoke(t *testing.T) {
 		releaseDir = "release-assets"
 	}
 
-	// Test all platform binaries
+	// Test all platform binaries.
 	binaries := []struct {
 		name     string
 		platform string
@@ -66,56 +66,67 @@ func TestBinarySmoke(t *testing.T) {
 		t.Run(fmt.Sprintf("Binary_%s", binary.name), func(t *testing.T) {
 			binaryPath := filepath.Join(releaseDir, binary.name)
 
-			// Check if binary exists
-			if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+			_, statErr := os.Stat(binaryPath)
+			if os.IsNotExist(statErr) {
 				t.Skipf("Binary %s not found, skipping", binaryPath)
 			}
 
-			// Test help command (since --version is not implemented)
-			t.Run("help_command_basic", func(t *testing.T) {
-				cmd := exec.Command(binaryPath, "--help")
-				output, err := cmd.Output()
-
-				// For cross-compiled binaries, this might fail on wrong architecture
-				if err != nil {
-					if strings.Contains(err.Error(), "exec format error") ||
-					   strings.Contains(err.Error(), "cannot execute binary file") {
-						t.Skipf("Cannot execute %s binary on this architecture", binary.platform)
-					}
-					t.Fatalf("Help command failed: %v", err)
-				}
-
-				outputStr := string(output)
-				assert.Contains(t, outputStr, "podboard",
-					"Help output should contain 'podboard'")
-				assert.Contains(t, outputStr, "Usage:",
-					"Help output should contain usage information")
-			})
-
-			// Test flags
-			t.Run("flags_validation", func(t *testing.T) {
-				cmd := exec.Command(binaryPath, "--invalid-flag")
-				output, err := cmd.CombinedOutput()
-
-				// Should exit with error for invalid flag
-				if err != nil && (strings.Contains(err.Error(), "exec format error") ||
-				   strings.Contains(err.Error(), "cannot execute binary file")) {
-					t.Skipf("Cannot execute %s binary on this architecture", binary.platform)
-				}
-
-				outputStr := string(output)
-				// Should show help or error message for invalid flags
-				validResponse := strings.Contains(outputStr, "Usage:") ||
-					strings.Contains(outputStr, "unknown flag") ||
-					strings.Contains(outputStr, "Error:")
-
-				assert.True(t, validResponse, "Should handle invalid flags gracefully")
-			})
+			runBinaryHelpTest(t, binaryPath, binary.platform)
+			runBinaryFlagsTest(t, binaryPath, binary.platform)
 		})
 	}
 }
 
-// TestBinaryStartupSmoke tests that the binary can actually start and serve HTTP
+// isCrossCompileError checks if an error is due to executing a binary compiled for a different architecture.
+func isCrossCompileError(err error) (crossCompile bool) {
+	if err == nil {
+		return crossCompile
+	}
+	msg := err.Error()
+	crossCompile = strings.Contains(msg, "exec format error") ||
+		strings.Contains(msg, "cannot execute binary file")
+	return crossCompile
+}
+
+func runBinaryHelpTest(t *testing.T, binaryPath, platform string) {
+	t.Helper()
+	t.Run("help_command_basic", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "--help")
+		output, err := cmd.Output()
+
+		if isCrossCompileError(err) {
+			t.Skipf("Cannot execute %s binary on this architecture", platform)
+		}
+		if err != nil {
+			t.Fatalf("Help command failed: %v", err)
+		}
+
+		outputStr := string(output)
+		assert.Contains(t, outputStr, "podboard", "Help output should contain 'podboard'")
+		assert.Contains(t, outputStr, "Usage:", "Help output should contain usage information")
+	})
+}
+
+func runBinaryFlagsTest(t *testing.T, binaryPath, platform string) {
+	t.Helper()
+	t.Run("flags_validation", func(t *testing.T) {
+		cmd := exec.Command(binaryPath, "--invalid-flag")
+		output, err := cmd.CombinedOutput()
+
+		if isCrossCompileError(err) {
+			t.Skipf("Cannot execute %s binary on this architecture", platform)
+		}
+
+		outputStr := string(output)
+		validResponse := strings.Contains(outputStr, "Usage:") ||
+			strings.Contains(outputStr, "unknown flag") ||
+			strings.Contains(outputStr, "Error:")
+
+		assert.True(t, validResponse, "Should handle invalid flags gracefully")
+	})
+}
+
+// TestBinaryStartupSmoke tests that the binary can actually start and serve HTTP.
 func TestBinaryStartupSmoke(t *testing.T) {
 	// Skip if not in binary testing mode
 	if os.Getenv("PODBOARD_BINARY_TEST") != "true" {
@@ -142,7 +153,8 @@ func TestBinaryStartupSmoke(t *testing.T) {
 	}
 
 	// Check if binary exists
-	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+	_, statErr := os.Stat(binaryPath)
+	if os.IsNotExist(statErr) {
 		t.Skipf("Binary %s not found, skipping startup test", binaryPath)
 	}
 
@@ -170,7 +182,7 @@ func TestBinaryStartupSmoke(t *testing.T) {
 		var resp *http.Response
 		var lastErr error
 
-		for i := 0; i < 15; i++ { // Try for 15 seconds
+		for range 15 { // Try for 15 seconds
 			time.Sleep(1 * time.Second)
 
 			resp, lastErr = http.Get("http://127.0.0.1:19999/health")

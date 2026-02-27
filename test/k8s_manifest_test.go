@@ -36,85 +36,135 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// getK8sDir returns the path to the k8s directory relative to the project root
-func getK8sDir() string {
+// getK8sDir returns the path to the k8s directory relative to the project root.
+func getK8sDir() (k8sDir string) {
 	// Get the directory of the current test file
 	_, filename, _, _ := runtime.Caller(0)
 	testDir := filepath.Dir(filename)
 
 	// Go up one level to project root and then to k8s
-	return filepath.Join(testDir, "..", "k8s")
+	k8sDir = filepath.Join(testDir, "..", "k8s")
+	return k8sDir
 }
 
-// validateYAMLFile validates that a file contains valid YAML and basic Kubernetes resource structure
-func validateYAMLFile(filePath string) error {
-	file, err := os.Open(filePath)
+// validateYAMLFile validates that a file contains valid YAML and basic Kubernetes resource structure.
+func validateYAMLFile(filePath string) (err error) {
+	var file *os.File
+	file, err = os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		err = fmt.Errorf("failed to open file: %w", err)
+		return err
 	}
 	defer func() { _ = file.Close() }()
 
-	content, err := io.ReadAll(file)
+	var content []byte
+	content, err = io.ReadAll(file)
 	if err != nil {
-		return fmt.Errorf("failed to read file: %w", err)
+		err = fmt.Errorf("failed to read file: %w", err)
+		return err
 	}
 
-	// Split by document separator for multi-document YAML
+	// Split by document separator for multi-document YAML.
 	documents := strings.Split(string(content), "---")
 
 	for i, doc := range documents {
 		doc = strings.TrimSpace(doc)
-		if doc == "" {
-			continue // Skip empty documents
+		if doc == "" || isCommentOnly(doc) {
+			continue
 		}
 
-		// Skip documents that are entirely commented out
-		lines := strings.Split(doc, "\n")
-		hasNonCommentLine := false
-		for _, line := range lines {
-			trimmedLine := strings.TrimSpace(line)
-			if trimmedLine != "" && !strings.HasPrefix(trimmedLine, "#") {
-				hasNonCommentLine = true
-				break
-			}
-		}
-		if !hasNonCommentLine {
-			continue // Skip documents that are entirely comments
-		}
-
-		var yamlDoc map[string]interface{}
-		if err := yaml.Unmarshal([]byte(doc), &yamlDoc); err != nil {
-			return fmt.Errorf("invalid YAML in document %d: %w", i+1, err)
-		}
-
-		// Basic Kubernetes resource validation
-		if kind, exists := yamlDoc["kind"]; !exists {
-			return fmt.Errorf("document %d missing required 'kind' field", i+1)
-		} else if kindStr, ok := kind.(string); !ok || kindStr == "" {
-			return fmt.Errorf("document %d 'kind' field must be a non-empty string", i+1)
-		}
-
-		if apiVersion, exists := yamlDoc["apiVersion"]; !exists {
-			return fmt.Errorf("document %d missing required 'apiVersion' field", i+1)
-		} else if apiVersionStr, ok := apiVersion.(string); !ok || apiVersionStr == "" {
-			return fmt.Errorf("document %d 'apiVersion' field must be a non-empty string", i+1)
-		}
-
-		if metadata, exists := yamlDoc["metadata"]; !exists {
-			return fmt.Errorf("document %d missing required 'metadata' field", i+1)
-		} else if metadataMap, ok := metadata.(map[string]interface{}); !ok {
-			return fmt.Errorf("document %d 'metadata' field must be an object", i+1)
-		} else if name, exists := metadataMap["name"]; !exists {
-			return fmt.Errorf("document %d metadata missing required 'name' field", i+1)
-		} else if nameStr, ok := name.(string); !ok || nameStr == "" {
-			return fmt.Errorf("document %d metadata 'name' field must be a non-empty string", i+1)
+		err = validateK8sDocument(doc, i+1)
+		if err != nil {
+			return err
 		}
 	}
 
-	return nil
+	return err
 }
 
-// TestKubernetesManifests tests that Kubernetes manifests are valid
+// isCommentOnly returns true if the document contains only comments and blank lines.
+func isCommentOnly(doc string) (commentOnly bool) {
+	lines := strings.Split(doc, "\n")
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine != "" && !strings.HasPrefix(trimmedLine, "#") {
+			return commentOnly
+		}
+	}
+	commentOnly = true
+	return commentOnly
+}
+
+// validateK8sDocument validates a single YAML document has required Kubernetes fields.
+func validateK8sDocument(doc string, docNum int) (err error) {
+	var yamlDoc map[string]interface{}
+	unmarshalErr := yaml.Unmarshal([]byte(doc), &yamlDoc)
+	if unmarshalErr != nil {
+		err = fmt.Errorf("invalid YAML in document %d: %w", docNum, unmarshalErr)
+		return err
+	}
+
+	err = validateStringField(yamlDoc, "kind", docNum)
+	if err != nil {
+		return err
+	}
+
+	err = validateStringField(yamlDoc, "apiVersion", docNum)
+	if err != nil {
+		return err
+	}
+
+	err = validateMetadataField(yamlDoc, docNum)
+	return err
+}
+
+// validateStringField checks that a top-level field exists and is a non-empty string.
+func validateStringField(doc map[string]interface{}, field string, docNum int) (err error) {
+	val, exists := doc[field]
+	if !exists {
+		err = fmt.Errorf("document %d missing required '%s' field", docNum, field)
+		return err
+	}
+
+	str, ok := val.(string)
+	if !ok || str == "" {
+		err = fmt.Errorf("document %d '%s' field must be a non-empty string", docNum, field)
+		return err
+	}
+
+	return err
+}
+
+// validateMetadataField checks that metadata exists, is a map, and has a non-empty name.
+func validateMetadataField(doc map[string]interface{}, docNum int) (err error) {
+	metadata, exists := doc["metadata"]
+	if !exists {
+		err = fmt.Errorf("document %d missing required 'metadata' field", docNum)
+		return err
+	}
+
+	metadataMap, ok := metadata.(map[string]interface{})
+	if !ok {
+		err = fmt.Errorf("document %d 'metadata' field must be an object", docNum)
+		return err
+	}
+
+	name, nameExists := metadataMap["name"]
+	if !nameExists {
+		err = fmt.Errorf("document %d metadata missing required 'name' field", docNum)
+		return err
+	}
+
+	nameStr, nameOk := name.(string)
+	if !nameOk || nameStr == "" {
+		err = fmt.Errorf("document %d metadata 'name' field must be a non-empty string", docNum)
+		return err
+	}
+
+	return err
+}
+
+// TestKubernetesManifests tests that Kubernetes manifests are valid.
 func TestKubernetesManifests(t *testing.T) {
 	// Skip if not in K8s testing mode
 	if os.Getenv("PODBOARD_K8S_TEST") != "true" {
@@ -135,7 +185,8 @@ func TestKubernetesManifests(t *testing.T) {
 			manifestPath := filepath.Join(k8sDir, manifest)
 
 			// Check if manifest file exists
-			if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+			_, statErr := os.Stat(manifestPath)
+			if os.IsNotExist(statErr) {
 				t.Skipf("Manifest %s not found, skipping", manifestPath)
 			}
 
@@ -149,7 +200,7 @@ func TestKubernetesManifests(t *testing.T) {
 	}
 }
 
-// TestRBACPermissions tests that RBAC configurations have expected permissions
+// TestRBACPermissions tests that RBAC configurations have expected permissions.
 func TestRBACPermissions(t *testing.T) {
 	// Skip if not in K8s testing mode
 	if os.Getenv("PODBOARD_K8S_TEST") != "true" {
@@ -190,7 +241,8 @@ func TestRBACPermissions(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Check if manifest file exists
-			if _, err := os.Stat(tc.manifestPath); os.IsNotExist(err) {
+			_, statErr := os.Stat(tc.manifestPath)
+			if os.IsNotExist(statErr) {
 				t.Skipf("Manifest %s not found, skipping", tc.manifestPath)
 			}
 
@@ -217,7 +269,7 @@ func TestRBACPermissions(t *testing.T) {
 	}
 }
 
-// TestDeploymentManifest tests deployment-specific configurations
+// TestDeploymentManifest tests deployment-specific configurations.
 func TestDeploymentManifest(t *testing.T) {
 	// Skip if not in K8s testing mode
 	if os.Getenv("PODBOARD_K8S_TEST") != "true" {
@@ -227,7 +279,8 @@ func TestDeploymentManifest(t *testing.T) {
 	manifestPath := filepath.Join(getK8sDir(), "deployment.yaml")
 
 	// Check if manifest file exists
-	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+	_, statErr := os.Stat(manifestPath)
+	if os.IsNotExist(statErr) {
 		t.Skipf("Deployment manifest not found, skipping")
 	}
 
@@ -272,7 +325,7 @@ func TestDeploymentManifest(t *testing.T) {
 	})
 }
 
-// TestAllInOneManifest tests the all-in-one deployment
+// TestAllInOneManifest tests the all-in-one deployment.
 func TestAllInOneManifest(t *testing.T) {
 	// Skip if not in K8s testing mode
 	if os.Getenv("PODBOARD_K8S_TEST") != "true" {
@@ -282,7 +335,8 @@ func TestAllInOneManifest(t *testing.T) {
 	manifestPath := filepath.Join(getK8sDir(), "all-in-one-namespace-restricted.yaml")
 
 	// Check if manifest file exists
-	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+	_, statErr := os.Stat(manifestPath)
+	if os.IsNotExist(statErr) {
 		t.Skipf("All-in-one manifest not found, skipping")
 	}
 

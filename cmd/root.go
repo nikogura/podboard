@@ -26,8 +26,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/nikogura/podboard/pkg/podboard"
+	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
 
@@ -42,7 +42,6 @@ var address string
 
 //nolint:gochecknoglobals // Cobra boilerplate
 var domain string
-
 
 // rootCmd represents the base command when called without any subcommands.
 //

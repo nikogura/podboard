@@ -34,7 +34,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestPodboardIntegration tests the basic podboard API endpoints
+// TestPodboardIntegration tests the basic podboard API endpoints.
 func TestPodboardIntegration(t *testing.T) {
 	logger := zap.NewNop()
 

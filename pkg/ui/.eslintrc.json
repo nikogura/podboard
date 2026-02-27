@@ -1,6 +1,76 @@
 {
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 13,
+    "sourceType": "module"
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "no-floating-promise",
+    "import",
+    "security"
+  ],
   "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
     "next/core-web-vitals",
     "next/typescript"
-  ]
+  ],
+  "ignorePatterns": [".next/**/*", "node_modules/**/*", "dist/**/*"],
+  "rules": {
+    "no-console": "off",
+    "quotes": "off",
+    "comma-dangle": "off",
+    "no-multiple-empty-lines": "off",
+    "class-methods-use-this": "off",
+    "camelcase": "error",
+    "no-unused-vars": "off",
+    "object-curly-spacing": "off",
+    "curly": "error",
+    "import/extensions": "off",
+    "import/no-unresolved": "off",
+    "@typescript-eslint/explicit-function-return-type": "error",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": ["error", { "args": "after-used" }],
+    "no-floating-promise/no-floating-promise": 2,
+    "import/order": [
+      "warn",
+      {
+        "groups": [
+          "builtin",
+          "external",
+          "internal",
+          "parent",
+          "sibling",
+          "index",
+          "object"
+        ],
+        "newlines-between": "always",
+        "alphabetize": {
+          "order": "asc",
+          "caseInsensitive": true
+        }
+      }
+    ],
+    "security/detect-object-injection": "off",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/no-empty-function": "off",
+    "@typescript-eslint/no-non-null-asserted-optional-chain": "off",
+    "prefer-template": "error",
+    "no-constant-condition": "off",
+    "no-empty": "off",
+    "no-async-promise-executor": "off",
+    "no-inner-declarations": "off",
+    "@typescript-eslint/naming-convention": [
+      "error",
+      {
+        "selector": "typeLike",
+        "format": ["PascalCase"]
+      }
+    ]
+  }
 }

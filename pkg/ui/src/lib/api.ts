@@ -49,7 +49,7 @@ export const api = {
   // Namespaces
   getNamespaces: (cluster?: string): Promise<NamespacesResponse> => {
     const params = new URLSearchParams();
-    if (cluster) params.append('cluster', cluster);
+    if (cluster) {params.append('cluster', cluster);}
 
     const queryString = params.toString();
     return fetchAPI(`/namespaces${queryString ? `?${queryString}` : ''}`);
@@ -58,9 +58,9 @@ export const api = {
   // Pods
   getPods: (namespace?: string, labelSelector?: string, cluster?: string): Promise<PodsResponse> => {
     const params = new URLSearchParams();
-    if (namespace) params.append('namespace', namespace);
-    if (labelSelector) params.append('labelSelector', labelSelector);
-    if (cluster) params.append('cluster', cluster);
+    if (namespace) {params.append('namespace', namespace);}
+    if (labelSelector) {params.append('labelSelector', labelSelector);}
+    if (cluster) {params.append('cluster', cluster);}
 
     const queryString = params.toString();
     return fetchAPI(`/pods${queryString ? `?${queryString}` : ''}`);
@@ -69,7 +69,7 @@ export const api = {
   // Delete pod
   deletePod: (namespace: string, podName: string, cluster?: string): Promise<{message: string}> => {
     const params = new URLSearchParams();
-    if (cluster) params.append('cluster', cluster);
+    if (cluster) {params.append('cluster', cluster);}
 
     const queryString = params.toString();
     return fetchAPI(`/pods/${namespace}/${podName}${queryString ? `?${queryString}` : ''}`, {

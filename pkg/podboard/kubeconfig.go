@@ -23,6 +23,7 @@ SOFTWARE.
 package podboard
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,22 +36,22 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-// ClusterInfo represents a kubectl cluster
+// ClusterInfo represents a kubectl cluster.
 type ClusterInfo struct {
 	Name    string `json:"name"`
 	Current bool   `json:"current"`
 }
 
-// KubeConfigService handles kubeconfig operations
+// KubeConfigService handles kubeconfig operations.
 type KubeConfigService struct {
-	logger      *zap.Logger
-	inCluster   bool
+	logger         *zap.Logger
+	inCluster      bool
 	kubeconfigPath string
 }
 
-// NewKubeConfigService creates a new kubeconfig service
-func NewKubeConfigService(logger *zap.Logger) *KubeConfigService {
-	service := &KubeConfigService{
+// NewKubeConfigService creates a new kubeconfig service.
+func NewKubeConfigService(logger *zap.Logger) (service *KubeConfigService) {
+	service = &KubeConfigService{
 		logger: logger,
 	}
 
@@ -71,25 +72,30 @@ func NewKubeConfigService(logger *zap.Logger) *KubeConfigService {
 	return service
 }
 
-// IsInCluster returns true if running inside a Kubernetes cluster
-func (kcs *KubeConfigService) IsInCluster() bool {
-	return kcs.inCluster
+// IsInCluster returns true if running inside a Kubernetes cluster.
+func (kcs *KubeConfigService) IsInCluster() (inCluster bool) {
+	inCluster = kcs.inCluster
+	return inCluster
 }
 
-// GetClusters returns available kubectl clusters
-func (kcs *KubeConfigService) GetClusters() ([]ClusterInfo, error) {
+// GetClusters returns available kubectl clusters.
+func (kcs *KubeConfigService) GetClusters() (clusters []ClusterInfo, err error) {
 	if kcs.inCluster {
-		return nil, fmt.Errorf("clusters not available when running in cluster")
+		err = errors.New("clusters not available when running in cluster")
+		return clusters, err
 	}
 
 	if kcs.kubeconfigPath == "" {
-		return nil, fmt.Errorf("kubeconfig path not found")
+		err = errors.New("kubeconfig path not found")
+		return clusters, err
 	}
 
 	// Load the kubeconfig file
-	config, err := clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	var config *clientcmdapi.Config
+	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+		err = fmt.Errorf("failed to load kubeconfig: %w", err)
+		return clusters, err
 	}
 
 	// Get current cluster from current context
@@ -102,7 +108,6 @@ func (kcs *KubeConfigService) GetClusters() ([]ClusterInfo, error) {
 
 	// Extract unique clusters
 	clusterMap := make(map[string]bool)
-	var clusters []ClusterInfo
 
 	for clusterName := range config.Clusters {
 		if !clusterMap[clusterName] {
@@ -116,60 +121,74 @@ func (kcs *KubeConfigService) GetClusters() ([]ClusterInfo, error) {
 	}
 
 	// Sort clusters alphabetically, but put current cluster first
-	sort.Slice(clusters, func(i, j int) bool {
+	sort.Slice(clusters, func(i, j int) (less bool) {
 		if clusters[i].Current {
-			return true
+			less = true
+			return less
 		}
 		if clusters[j].Current {
-			return false
+			less = false
+			return less
 		}
-		return clusters[i].Name < clusters[j].Name
+		less = clusters[i].Name < clusters[j].Name
+		return less
 	})
 
-	return clusters, nil
+	return clusters, err
 }
 
-// GetCurrentContext returns the current context name
-func (kcs *KubeConfigService) GetCurrentContext() (string, error) {
+// GetCurrentContext returns the current context name.
+func (kcs *KubeConfigService) GetCurrentContext() (currentContext string, err error) {
 	if kcs.inCluster {
-		return "", fmt.Errorf("current context not available when running in cluster")
+		err = errors.New("current context not available when running in cluster")
+		return currentContext, err
 	}
 
-	config, err := clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	var config *clientcmdapi.Config
+	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to load kubeconfig: %w", err)
+		err = fmt.Errorf("failed to load kubeconfig: %w", err)
+		return currentContext, err
 	}
 
-	return config.CurrentContext, nil
+	currentContext = config.CurrentContext
+	return currentContext, err
 }
 
-// CreateClientForCluster creates a Kubernetes client for the specified cluster
-func (kcs *KubeConfigService) CreateClientForCluster(clusterName string) (kubernetes.Interface, error) {
+// CreateClientForCluster creates a Kubernetes client for the specified cluster.
+func (kcs *KubeConfigService) CreateClientForCluster(clusterName string) (client kubernetes.Interface, err error) {
 	if kcs.inCluster {
 		// When in cluster, ignore cluster name and use in-cluster config
-		config, err := rest.InClusterConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
+		inClusterConfig, configErr := rest.InClusterConfig()
+		if configErr != nil {
+			err = fmt.Errorf("failed to get in-cluster config: %w", configErr)
+			return client, err
 		}
-		return kubernetes.NewForConfig(config)
+		client, err = kubernetes.NewForConfig(inClusterConfig)
+		return client, err
 	}
 
 	// Load kubeconfig
-	config, err := clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	var config *clientcmdapi.Config
+	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+		err = fmt.Errorf("failed to load kubeconfig: %w", err)
+		return client, err
 	}
 
 	// Verify cluster exists
 	cluster, exists := config.Clusters[clusterName]
 	if !exists {
-		return nil, fmt.Errorf("cluster %q not found in kubeconfig", clusterName)
+		err = fmt.Errorf("cluster %q not found in kubeconfig", clusterName)
+		return client, err
 	}
 
 	// Find the most commonly used user for this cluster
-	userName, err := kcs.findBestUserForCluster(config, clusterName)
+	var userName string
+	userName, err = kcs.findBestUserForCluster(config, clusterName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find suitable user for cluster %q: %w", clusterName, err)
+		err = fmt.Errorf("failed to find suitable user for cluster %q: %w", clusterName, err)
+		return client, err
 	}
 
 	// Create a virtual context combining the cluster and user
@@ -187,42 +206,49 @@ func (kcs *KubeConfigService) CreateClientForCluster(clusterName string) (kubern
 		CurrentContext: "virtual",
 	})
 
-	restConfig, err := clientConfig.ClientConfig()
+	var restConfig *rest.Config
+	restConfig, err = clientConfig.ClientConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create client config for cluster %q (user %q): %w", clusterName, userName, err)
+		err = fmt.Errorf("failed to create client config for cluster %q (user %q): %w", clusterName, userName, err)
+		return client, err
 	}
 
-	client, err := kubernetes.NewForConfig(restConfig)
+	client, err = kubernetes.NewForConfig(restConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create client for cluster %q (user %q): %w", clusterName, userName, err)
+		err = fmt.Errorf("failed to create client for cluster %q (user %q): %w", clusterName, userName, err)
+		return client, err
 	}
 
 	kcs.logger.Info("Created Kubernetes client for cluster", zap.String("cluster", clusterName), zap.String("user", userName))
-	return client, nil
+	return client, err
 }
 
-// GetCurrentCluster returns the current cluster name
-func (kcs *KubeConfigService) GetCurrentCluster() (string, error) {
+// GetCurrentCluster returns the current cluster name.
+func (kcs *KubeConfigService) GetCurrentCluster() (clusterName string, err error) {
 	if kcs.inCluster {
-		return "", fmt.Errorf("current cluster not available when running in cluster")
+		err = errors.New("current cluster not available when running in cluster")
+		return clusterName, err
 	}
 
-	config, err := clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	var config *clientcmdapi.Config
+	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to load kubeconfig: %w", err)
+		err = fmt.Errorf("failed to load kubeconfig: %w", err)
+		return clusterName, err
 	}
 
 	if config.CurrentContext != "" {
 		if context, exists := config.Contexts[config.CurrentContext]; exists {
-			return context.Cluster, nil
+			clusterName = context.Cluster
+			return clusterName, err
 		}
 	}
 
-	return "", nil
+	return clusterName, err
 }
 
-// findBestUserForCluster finds the most commonly used user for a given cluster
-func (kcs *KubeConfigService) findBestUserForCluster(config *clientcmdapi.Config, clusterName string) (string, error) {
+// findBestUserForCluster finds the most commonly used user for a given cluster.
+func (kcs *KubeConfigService) findBestUserForCluster(config *clientcmdapi.Config, clusterName string) (bestUser string, err error) {
 	// Count how many contexts use each user for this cluster
 	userCounts := make(map[string]int)
 
@@ -233,11 +259,11 @@ func (kcs *KubeConfigService) findBestUserForCluster(config *clientcmdapi.Config
 	}
 
 	if len(userCounts) == 0 {
-		return "", fmt.Errorf("no contexts found for cluster %q", clusterName)
+		err = fmt.Errorf("no contexts found for cluster %q", clusterName)
+		return bestUser, err
 	}
 
 	// Find the most commonly used user
-	var bestUser string
 	var maxCount int
 
 	for user, count := range userCounts {
@@ -249,8 +275,9 @@ func (kcs *KubeConfigService) findBestUserForCluster(config *clientcmdapi.Config
 
 	// Verify the user exists in AuthInfos
 	if _, exists := config.AuthInfos[bestUser]; !exists {
-		return "", fmt.Errorf("user %q not found in kubeconfig AuthInfos", bestUser)
+		err = fmt.Errorf("user %q not found in kubeconfig AuthInfos", bestUser)
+		return bestUser, err
 	}
 
-	return bestUser, nil
+	return bestUser, err
 }

@@ -35,7 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDockerImage tests the built Docker image
+// TestDockerImage tests the built Docker image.
 func TestDockerImage(t *testing.T) {
 	// Skip if not in Docker testing mode
 	if os.Getenv("PODBOARD_DOCKER_TEST") != "true" {
@@ -43,7 +43,8 @@ func TestDockerImage(t *testing.T) {
 	}
 
 	// Check if docker is available
-	if _, err := exec.LookPath("docker"); err != nil {
+	_, dockerLookupErr := exec.LookPath("docker")
+	if dockerLookupErr != nil {
 		t.Skip("Docker not available, skipping Docker tests")
 	}
 
@@ -123,7 +124,7 @@ func TestDockerImage(t *testing.T) {
 		var resp *http.Response
 		var lastErr error
 
-		for i := 0; i < 20; i++ { // Try for 20 seconds
+		for range 20 { // Try for 20 seconds
 			time.Sleep(1 * time.Second)
 
 			resp, lastErr = http.Get("http://127.0.0.1:19998/health")
@@ -162,7 +163,7 @@ func TestDockerImage(t *testing.T) {
 	})
 }
 
-// TestDockerCompose tests the docker-compose.yml file
+// TestDockerCompose tests the docker-compose.yml file.
 func TestDockerCompose(t *testing.T) {
 	// Skip if not in Docker testing mode
 	if os.Getenv("PODBOARD_DOCKER_TEST") != "true" {
@@ -170,8 +171,10 @@ func TestDockerCompose(t *testing.T) {
 	}
 
 	// Check if docker-compose is available
-	if _, err := exec.LookPath("docker-compose"); err != nil {
-		if _, err := exec.LookPath("docker"); err != nil {
+	_, composeErr := exec.LookPath("docker-compose")
+	if composeErr != nil {
+		_, dockerErr := exec.LookPath("docker")
+		if dockerErr != nil {
 			t.Skip("Neither docker-compose nor docker compose available")
 		}
 	}
@@ -181,7 +184,8 @@ func TestDockerCompose(t *testing.T) {
 		var cmd *exec.Cmd
 
 		// Try docker compose (new) first, then docker-compose (legacy)
-		if _, err := exec.LookPath("docker"); err == nil {
+		_, dockerPathErr := exec.LookPath("docker")
+		if dockerPathErr == nil {
 			cmd = exec.Command("docker", "compose", "-f", "../docker-compose.yml", "config")
 		} else {
 			cmd = exec.Command("docker-compose", "-f", "../docker-compose.yml", "config")
@@ -197,7 +201,8 @@ func TestDockerCompose(t *testing.T) {
 		t.Run("service_definition", func(t *testing.T) {
 			var cmd *exec.Cmd
 
-			if _, err := exec.LookPath("docker"); err == nil {
+			_, dockerLookErr := exec.LookPath("docker")
+			if dockerLookErr == nil {
 				cmd = exec.Command("docker", "compose", "-f", "../docker-compose.yml", "config", "--services")
 			} else {
 				cmd = exec.Command("docker-compose", "-f", "../docker-compose.yml", "config", "--services")

@@ -1,4 +1,4 @@
-.PHONY: build build-ui build-go test test-integration test-integration-real test-binary test-docker test-k8s test-install test-all clean docker-build docker-push help
+.PHONY: build build-ui build-go test test-integration test-integration-real test-binary test-docker test-k8s test-install test-all clean docker-build docker-push lint help
 
 # Variables
 BINARY_NAME=podboard
@@ -54,8 +54,12 @@ dev-ui: ## Start UI development server
 	cd pkg/ui && npm run dev
 
 lint: ## Run linters
+	@echo "Running namedreturns linter..."
+	namedreturns ./...
+	@echo "Running golangci-lint..."
 	golangci-lint run
-	cd pkg/ui && npm run lint
+	@echo "Running ESLint on TypeScript..."
+	cd pkg/ui && npx eslint 'src/**/*.{ts,tsx}' --max-warnings 0
 
 test-binary: build ## Test built binaries (requires PODBOARD_BINARY_TEST=true)
 	@echo "Testing binary releases..."

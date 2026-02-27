@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode } from "react";
+import React, { ReactNode } from "react";
+
 import { ThemeToggle } from "./ThemeToggle";
 
 interface SimpleLayoutProps {
@@ -8,7 +9,7 @@ interface SimpleLayoutProps {
   environment?: string;
 }
 
-export function SimpleLayout({ children, environment = "..." }: SimpleLayoutProps) {
+export function SimpleLayout({ children, environment = "..." }: SimpleLayoutProps): React.ReactElement {
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--bg-secondary)" }}>
