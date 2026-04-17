@@ -54,6 +54,9 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Install namedreturns linter
+      run: go install github.com/nikogura/namedreturns@latest
+
     - name: Build UI 
       run: make build
 
