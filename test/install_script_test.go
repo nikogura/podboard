@@ -126,7 +126,7 @@ func TestInstallScript(t *testing.T) {
 			cd %s
 			# Extract variable definitions without running main
 			grep -E '^(REPO=|BINARY_NAME=|INSTALL_DIR=)' ./install.sh || true
-			echo "INSTALL_DIR_TEST: ${INSTALL_DIR:-/usr/local/bin}"
+			echo "INSTALL_DIR_TEST: ${INSTALL_DIR:-${HOME}/.local/bin}"
 			echo "BINARY_NAME_TEST: podboard"
 			echo "REPO_TEST: nikogura/podboard"
 		`, scriptDir)

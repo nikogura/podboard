@@ -34,15 +34,15 @@ docker-compose up
 ```bash
 # Linux (AMD64)
 curl -L https://github.com/nikogura/podboard/releases/latest/download/podboard-linux-amd64 -o podboard
-chmod +x podboard && sudo mv podboard /usr/local/bin/
+chmod +x podboard && mkdir -p ~/.local/bin && mv podboard ~/.local/bin/
 
 # macOS (Intel)
 curl -L https://github.com/nikogura/podboard/releases/latest/download/podboard-darwin-amd64 -o podboard
-chmod +x podboard && sudo mv podboard /usr/local/bin/
+chmod +x podboard && mkdir -p ~/.local/bin && mv podboard ~/.local/bin/
 
 # macOS (Apple Silicon)
 curl -L https://github.com/nikogura/podboard/releases/latest/download/podboard-darwin-arm64 -o podboard
-chmod +x podboard && sudo mv podboard /usr/local/bin/
+chmod +x podboard && mkdir -p ~/.local/bin && mv podboard ~/.local/bin/
 
 # Windows (PowerShell)
 Invoke-WebRequest -Uri "https://github.com/nikogura/podboard/releases/latest/download/podboard-windows-amd64.exe" -OutFile "podboard.exe"

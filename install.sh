@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO="nikogura/podboard"
 BINARY_NAME="podboard"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 GITHUB_API="https://api.github.com"
 GITHUB_RAW="https://github.com"
 
@@ -99,6 +99,12 @@ install_binary() {
 
     download_url="${GITHUB_RAW}/${REPO}/releases/download/${version}/${platform}"
     temp_file=$(mktemp)
+
+    # Create install directory if it doesn't exist
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        print_status "Creating ${INSTALL_DIR}..."
+        mkdir -p "$INSTALL_DIR"
+    fi
 
     # Use sudo for system-wide installation if needed
     if [[ ! -w "$INSTALL_DIR" ]]; then
