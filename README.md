@@ -23,7 +23,7 @@ curl -sSL https://raw.githubusercontent.com/nikogura/podboard/main/install.sh | 
 ### Option 2: Docker
 ```bash
 # With your existing kubeconfig
-docker run -p 9999:9999 -v ~/.kube:/root/.kube:ro ghcr.io/nikogura/podboard:latest
+docker run -p 9999:9999 -v ~/.kube:/home/podboard/.kube:ro ghcr.io/nikogura/podboard:latest
 
 # Or with docker-compose
 curl -O https://raw.githubusercontent.com/nikogura/podboard/main/docker-compose.yml

@@ -37,17 +37,20 @@ FROM alpine:3.19
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
-
-# Copy the binary
-COPY --from=go-builder /app/podboard .
-
-# Create non-root user
+# Create the non-root runtime user before anything references it.
 RUN addgroup -g 1001 -S podboard && \
     adduser -u 1001 -S podboard -G podboard
 
+# The binary lives in a world-searchable directory, root-owned and
+# world-executable, so it runs under the image's own user AND under any
+# arbitrary uid a Pod securityContext assigns (the k8s manifests use 65534).
+# It must never sit under /root, which is mode 0700.
+WORKDIR /app
+COPY --from=go-builder --chmod=0755 /app/podboard /app/podboard
+
 USER podboard
+ENV HOME=/home/podboard
 
 EXPOSE 9999
 
-CMD ["./podboard"]
+CMD ["/app/podboard"]

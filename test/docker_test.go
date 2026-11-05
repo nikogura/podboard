@@ -96,6 +96,38 @@ func TestDockerImage(t *testing.T) {
 		assert.Contains(t, outputStr, "9999/tcp", "Image should expose port 9999")
 	})
 
+	t.Run("runs_as_non_root", func(t *testing.T) {
+		cmd := exec.Command("docker", "inspect", "--format", "{{.Config.User}}", imageName)
+		output, err := cmd.Output()
+		require.NoError(t, err, "Should be able to inspect image user")
+
+		user := strings.TrimSpace(string(output))
+		assert.NotEmpty(t, user, "Image must declare a runtime user")
+		assert.NotEqual(t, "root", user, "Image must not run as root")
+		assert.NotEqual(t, "0", user, "Image must not run as uid 0")
+	})
+
+	// The binary must be reachable by the uid the container actually runs as,
+	// not just by root. Some runtimes exec the entrypoint before dropping
+	// privileges and mask a binary nobody else can traverse to, so stat it
+	// from inside as the running user before exec'ing it.
+	binaryProbe := "stat /app/podboard >/dev/null && exec /app/podboard --help"
+
+	t.Run("binary_readable_by_image_user", func(t *testing.T) {
+		cmd := exec.Command("docker", "run", "--rm", "--entrypoint", "/bin/sh", imageName, "-c", binaryProbe)
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Image user must be able to stat and exec the binary: %s", string(output))
+		assert.Contains(t, string(output), "podboard", "Binary should print its help text")
+	})
+
+	t.Run("binary_readable_by_arbitrary_uid", func(t *testing.T) {
+		// Kubernetes manifests in k8s/ run the container as uid 65534.
+		cmd := exec.Command("docker", "run", "--rm", "--user", "65534:65534", "--entrypoint", "/bin/sh", imageName, "-c", binaryProbe)
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Arbitrary non-root uid must be able to stat and exec the binary: %s", string(output))
+		assert.Contains(t, string(output), "podboard", "Binary should print its help text")
+	})
+
 	t.Run("container_starts", func(t *testing.T) {
 		// Create a unique container name
 		containerName := fmt.Sprintf("podboard-test-%d", time.Now().Unix())

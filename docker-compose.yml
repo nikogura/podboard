@@ -8,9 +8,9 @@ services:
       - "9999:9999"
     volumes:
       # Mount your local kubeconfig for authentication
-      - ~/.kube:/root/.kube:ro
+      - ~/.kube:/home/podboard/.kube:ro
       # Optional: mount custom kubeconfig location
-      # - /path/to/your/kubeconfig:/root/.kube/config:ro
+      # - /path/to/your/kubeconfig:/home/podboard/.kube/config:ro
     # Optional environment variables (uncomment as needed)
     # environment:
     #   - NAMESPACE=default

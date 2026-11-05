@@ -252,7 +252,7 @@ jobs:
 
           ### Option 2: Docker
           ```bash
-          docker run -p 9999:9999 -v ~/.kube:/root/.kube:ro ghcr.io/${{ github.repository }}:${{ needs.test.outputs.version }}
+          docker run -p 9999:9999 -v ~/.kube:/home/podboard/.kube:ro ghcr.io/${{ github.repository }}:${{ needs.test.outputs.version }}
           # Or use :latest for the most recent version
           ```
 
