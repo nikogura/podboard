@@ -66,13 +66,13 @@ func SetupUIRoutes(router *gin.Engine) {
 
 		// Skip API routes
 		if len(path) >= 4 && path[:4] == "/api" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "API endpoint not found"})
+			c.JSON(http.StatusNotFound, gin.H{jsonKeyError: "API endpoint not found"})
 			return
 		}
 
 		// Skip health check
 		if path == "/health" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+			c.JSON(http.StatusNotFound, gin.H{jsonKeyError: "Not found"})
 			return
 		}
 

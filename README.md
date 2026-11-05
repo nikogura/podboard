@@ -69,10 +69,26 @@ Invoke-WebRequest -Uri "https://github.com/nikogura/podboard/releases/latest/dow
 ### Environment Variables
 - `DOMAIN`: Application domain for cookies
 - `NAMESPACE`: Default namespace to monitor (default: `default`)
+- `PODBOARD_INFORMER_SYNC_TIMEOUT`: How long the first request for a cluster waits for its pod cache to fill before failing (Go duration, default: `30s`)
+- `PODBOARD_INFORMER_IDLE_TIMEOUT`: Drop a cluster's pod watch after this long with no requests; `0` keeps watches open forever (Go duration, default: `10m`)
 
 ### Kubernetes Configuration
 - **In-cluster**: Automatically uses in-cluster service account
 - **Local**: Falls back to `~/.kube/config` for development
+
+### How Pod Reads Work
+Pod data is served from an in-memory cache, not by listing pods on every poll.
+The first request for a cluster opens a single long-lived watch on its API
+server and waits for the cache to fill (bounded by
+`PODBOARD_INFORMER_SYNC_TIMEOUT`). Every later request, from any viewer at any
+refresh interval, reads the cache, so the API server sees one watch per
+actively viewed cluster instead of one LIST per poll per viewer. Namespace
+scope, label selectors and `=~` regex filters are all applied in memory.
+
+If a cluster becomes unreachable the cache keeps serving the last state it saw
+while the watch reconnects with backoff, and the condition is logged. A cluster
+nobody has viewed for `PODBOARD_INFORMER_IDLE_TIMEOUT` has its watch closed;
+the next request reopens it.
 
 ## API Endpoints
 

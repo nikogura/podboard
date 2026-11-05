@@ -23,12 +23,16 @@ SOFTWARE.
 package podboard
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// jsonKeyError is the key API error responses carry their message under.
+const jsonKeyError = "error"
 
 // RunServer starts the podboard web server.
 func RunServer(address, domain string, logger *zap.Logger) (err error) {
@@ -38,8 +42,22 @@ func RunServer(address, domain string, logger *zap.Logger) (err error) {
 	fmt.Printf("Domain: %s\n", domain)
 
 	// Initialize services
+	informerConfig, configErr := InformerConfigFromEnv()
+	if configErr != nil {
+		err = fmt.Errorf("invalid informer configuration: %w", configErr)
+		return err
+	}
+
 	kubeConfigService := NewKubeConfigService(logger)
-	podService := NewPodService(kubeConfigService, logger)
+
+	informerCtx, cancelInformers := context.WithCancel(context.Background())
+	defer cancelInformers()
+
+	informerManager := NewInformerManager(kubeConfigService.CreateClientForCluster, informerConfig, logger)
+	informerManager.Start(informerCtx)
+	defer informerManager.Stop()
+
+	podService := NewPodService(kubeConfigService, informerManager, logger)
 
 	// Set up router
 	router := setupRouter()
@@ -94,7 +112,7 @@ func setupAPIRoutes(router *gin.Engine, podService *PodService, kubeConfigServic
 
 		clusters, err := kubeConfigService.GetClusters()
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			c.JSON(500, gin.H{jsonKeyError: err.Error()})
 			return
 		}
 
@@ -108,7 +126,7 @@ func setupAPIRoutes(router *gin.Engine, podService *PodService, kubeConfigServic
 		clusterName := c.Query("cluster")
 		namespaces, err := podService.GetNamespaces(c.Request.Context(), clusterName)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			c.JSON(500, gin.H{jsonKeyError: err.Error()})
 			return
 		}
 		c.JSON(200, gin.H{"namespaces": namespaces})
@@ -120,7 +138,7 @@ func setupAPIRoutes(router *gin.Engine, podService *PodService, kubeConfigServic
 		labelSelector := c.Query("labelSelector")
 		pods, err := podService.GetPods(c.Request.Context(), clusterName, namespace, labelSelector)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			c.JSON(500, gin.H{jsonKeyError: err.Error()})
 			return
 		}
 		c.JSON(200, gin.H{"pods": pods})
@@ -134,7 +152,7 @@ func setupAPIRoutes(router *gin.Engine, podService *PodService, kubeConfigServic
 
 		err := podService.DeletePod(c.Request.Context(), clusterName, namespace, podName)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			c.JSON(500, gin.H{jsonKeyError: err.Error()})
 			return
 		}
 

@@ -66,6 +66,9 @@ Kubernetes configuration:
 - Uses in-cluster config when running in a pod
 - Falls back to ~/.kube/config for local development
 - NAMESPACE: Default namespace to monitor (default: default)
+- Pod reads are served from a per-cluster watch cache, not a LIST per poll
+- PODBOARD_INFORMER_SYNC_TIMEOUT: Wait for a cluster's cache to fill (default: 30s)
+- PODBOARD_INFORMER_IDLE_TIMEOUT: Close an unviewed cluster's watch after this long; 0 disables (default: 10m)
 
 Example (local development - uses all defaults):
   go build && ./podboard

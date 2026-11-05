@@ -26,16 +26,27 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
+	listerscorev1 "k8s.io/client-go/listers/core/v1"
 )
 
-const imageTagLatest = "latest"
+const (
+	imageTagLatest = "latest"
+	// allNamespaces is the namespace value the UI sends to request every namespace.
+	allNamespaces = "all"
+	// inClusterName keys the informer for the cluster podboard itself runs in.
+	inClusterName = "in-cluster"
+	// regexSelectorOperator marks a label selector that is matched in-process.
+	regexSelectorOperator = "=~"
+)
 
 // PodInfo represents pod information for the dashboard.
 type PodInfo struct {
@@ -51,16 +62,20 @@ type PodInfo struct {
 	Labels    map[string]string `json:"labels,omitempty"`
 }
 
-// PodService handles pod-related operations.
+// PodService handles pod-related operations. Pod reads come from the
+// InformerManager's per-cluster cache; namespace and pod mutations use a
+// direct client.
 type PodService struct {
 	kubeConfigService *KubeConfigService
+	informers         *InformerManager
 	logger            *zap.Logger
 }
 
-// NewPodService creates a new pod service.
-func NewPodService(kubeConfigService *KubeConfigService, logger *zap.Logger) (service *PodService) {
+// NewPodService creates a new pod service reading pods from informerManager.
+func NewPodService(kubeConfigService *KubeConfigService, informerManager *InformerManager, logger *zap.Logger) (service *PodService) {
 	service = &PodService{
 		kubeConfigService: kubeConfigService,
+		informers:         informerManager,
 		logger:            logger,
 	}
 	return service
@@ -69,59 +84,77 @@ func NewPodService(kubeConfigService *KubeConfigService, logger *zap.Logger) (se
 // GetPods retrieves pods from the specified namespace with optional label selector and cluster.
 // Supports regex patterns in label selectors using the =~ operator (e.g., "app=~nginx.*").
 // Use namespace="all" to retrieve pods from all namespaces.
+//
+// Reads are served from the cluster's shared informer cache, so polling costs
+// no API calls once the cache is warm.
 func (ps *PodService) GetPods(ctx context.Context, clusterName, namespace, labelSelector string) (podInfos []PodInfo, err error) {
-	var client kubernetes.Interface
-	client, err = ps.getClient(clusterName)
-	if err != nil {
-		err = fmt.Errorf("failed to get Kubernetes client: %w", err)
+	resolvedCluster, resolveErr := ps.resolveClusterName(clusterName)
+	if resolveErr != nil {
+		err = fmt.Errorf("failed to resolve cluster: %w", resolveErr)
 		return podInfos, err
 	}
 
-	// Handle "all" namespace by using empty string for Kubernetes API
-	queryNamespace := namespace
-	if namespace == "all" {
-		queryNamespace = ""
+	lister, listerErr := ps.informers.PodLister(ctx, resolvedCluster)
+	if listerErr != nil {
+		ps.logger.Error("Failed to get pod cache", zap.Error(listerErr), zap.String("cluster", resolvedCluster))
+		err = fmt.Errorf("failed to get pod cache: %w", listerErr)
+		return podInfos, err
 	}
 
-	var pods *corev1.PodList
+	isRegex := strings.Contains(labelSelector, regexSelectorOperator)
 
-	// Check if this is a regex selector
-	if strings.Contains(labelSelector, "=~") {
-		// For regex selectors, we need to fetch all pods and filter manually
-		pods, err = client.CoreV1().Pods(queryNamespace).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			ps.logger.Error("Failed to list pods for regex filtering", zap.Error(err), zap.String("cluster", clusterName), zap.String("namespace", namespace))
-			err = fmt.Errorf("failed to list pods: %w", err)
-			return podInfos, err
-		}
-	} else {
-		// Use standard Kubernetes label selector
-		listOptions := metav1.ListOptions{}
-		if labelSelector != "" {
-			listOptions.LabelSelector = labelSelector
-		}
-
-		pods, err = client.CoreV1().Pods(queryNamespace).List(ctx, listOptions)
-		if err != nil {
-			ps.logger.Error("Failed to list pods", zap.Error(err), zap.String("cluster", clusterName), zap.String("namespace", namespace), zap.String("labelSelector", labelSelector))
-			err = fmt.Errorf("failed to list pods: %w", err)
-			return podInfos, err
-		}
+	pods, listErr := listCachedPods(lister, namespace, labelSelector, isRegex)
+	if listErr != nil {
+		err = fmt.Errorf("failed to list pods: %w", listErr)
+		return podInfos, err
 	}
 
-	for _, pod := range pods.Items {
-		// Apply regex filtering if needed
-		if strings.Contains(labelSelector, "=~") {
-			if !ps.matchesRegexSelector(pod.Labels, labelSelector) {
-				continue
-			}
+	for _, pod := range pods {
+		if isRegex && !ps.matchesRegexSelector(pod.Labels, labelSelector) {
+			continue
 		}
 
-		podInfo := ps.podToPodInfo(&pod)
+		podInfo := ps.podToPodInfo(pod)
 		podInfos = append(podInfos, podInfo)
 	}
 
 	return podInfos, err
+}
+
+// listCachedPods reads pods for the namespace scope from the cache, applying a
+// standard label selector server-side-equivalently in memory. Regex selectors
+// are matched by the caller, so they list everything. Results are sorted by
+// namespace then name so successive polls render in a stable order.
+func listCachedPods(lister listerscorev1.PodLister, namespace, labelSelector string, isRegex bool) (pods []*corev1.Pod, err error) {
+	selector := labels.Everything()
+	if !isRegex && labelSelector != "" {
+		selector, err = labels.Parse(labelSelector)
+		if err != nil {
+			err = fmt.Errorf("invalid label selector %q: %w", labelSelector, err)
+			return pods, err
+		}
+	}
+
+	if namespace == allNamespaces {
+		pods, err = lister.List(selector)
+	} else {
+		pods, err = lister.Pods(namespace).List(selector)
+	}
+	if err != nil {
+		err = fmt.Errorf("reading pod cache: %w", err)
+		return pods, err
+	}
+
+	sort.Slice(pods, func(i, j int) (less bool) {
+		if pods[i].Namespace != pods[j].Namespace {
+			less = pods[i].Namespace < pods[j].Namespace
+			return less
+		}
+		less = pods[i].Name < pods[j].Name
+		return less
+	})
+
+	return pods, err
 }
 
 // GetNamespaces retrieves all namespaces for the given cluster.
@@ -148,25 +181,38 @@ func (ps *PodService) GetNamespaces(ctx context.Context, clusterName string) (na
 	return names, err
 }
 
+// resolveClusterName turns the cluster a request named into the key used for
+// clients and informers: the in-cluster placeholder when running in a pod, the
+// kubeconfig's current cluster when the request named none, else the name as given.
+func (ps *PodService) resolveClusterName(clusterName string) (resolved string, err error) {
+	if ps.kubeConfigService.IsInCluster() {
+		resolved = inClusterName
+		return resolved, err
+	}
+
+	if clusterName != "" {
+		resolved = clusterName
+		return resolved, err
+	}
+
+	resolved, err = ps.kubeConfigService.GetCurrentCluster()
+	if err != nil {
+		err = fmt.Errorf("no cluster specified and failed to get current cluster: %w", err)
+		return resolved, err
+	}
+
+	return resolved, err
+}
+
 // getClient returns a Kubernetes client for the given cluster.
 func (ps *PodService) getClient(clusterName string) (client kubernetes.Interface, err error) {
-	if ps.kubeConfigService.IsInCluster() {
-		// When running in cluster, use in-cluster config regardless of cluster
-		client, err = ps.kubeConfigService.CreateClientForCluster("")
+	resolved, resolveErr := ps.resolveClusterName(clusterName)
+	if resolveErr != nil {
+		err = resolveErr
 		return client, err
 	}
 
-	if clusterName == "" {
-		// If no cluster specified, try to get current cluster
-		currentCluster, clusterErr := ps.kubeConfigService.GetCurrentCluster()
-		if clusterErr != nil {
-			err = fmt.Errorf("no cluster specified and failed to get current cluster: %w", clusterErr)
-			return client, err
-		}
-		clusterName = currentCluster
-	}
-
-	client, err = ps.kubeConfigService.CreateClientForCluster(clusterName)
+	client, err = ps.kubeConfigService.CreateClientForCluster(resolved)
 	return client, err
 }
 
