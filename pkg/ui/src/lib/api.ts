@@ -1,4 +1,4 @@
-import type { PodsResponse, NamespacesResponse, ClustersResponse } from '@/types';
+import type { PodsResponse, NamespacesResponse, ClustersResponse, ConfigResponse } from '@/types';
 
 const API_BASE = '/api';
 
@@ -42,6 +42,10 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 }
 
 export const api = {
+  // Server options the UI adapts to (read-only mode)
+  getConfig: (): Promise<ConfigResponse> =>
+    fetchAPI('/config'),
+
   // Clusters
   getClusters: (): Promise<ClustersResponse> =>
     fetchAPI('/clusters'),

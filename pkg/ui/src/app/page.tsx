@@ -17,14 +17,19 @@ export default function HomePage(): React.ReactElement {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [inCluster, setInCluster] = useState<boolean>(false);
+  const [readOnly, setReadOnly] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch clusters and initialize on mount
+  // Fetch server config and clusters, then initialize on mount
   useEffect(() => {
     const initializeApp = async (): Promise<void> => {
       try {
-        // First, get clusters
-        const clustersResponse = await api.getClusters();
+        const [configResponse, clustersResponse] = await Promise.all([
+          api.getConfig(),
+          api.getClusters(),
+        ]);
+        // In read-only mode the server has no delete route, so the UI shows no Delete column
+        setReadOnly(configResponse.readOnly);
         setInCluster(clustersResponse.inCluster);
 
         if (!clustersResponse.inCluster) {
@@ -41,8 +46,8 @@ export default function HomePage(): React.ReactElement {
           setSelectedCluster('');
         }
       } catch (err) {
-        console.error('Failed to fetch clusters:', err);
-        setError('Failed to fetch clusters');
+        console.error('Failed to initialize:', err);
+        setError('Failed to fetch server config and clusters');
       } finally {
         setLoading(false);
       }
@@ -329,7 +334,9 @@ export default function HomePage(): React.ReactElement {
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Age</th>
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>Node</th>
               <th style={{ padding: "0.75rem", textAlign: "left", fontWeight: "600" }}>IP</th>
-              <th style={{ padding: "0.75rem", textAlign: "center", fontWeight: "600" }}>Delete</th>
+              {!readOnly && (
+                <th style={{ padding: "0.75rem", textAlign: "center", fontWeight: "600" }}>Delete</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -355,30 +362,32 @@ export default function HomePage(): React.ReactElement {
                 <td style={{ padding: "0.75rem" }}>{pod.age || '-'}</td>
                 <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>{pod.node || '-'}</td>
                 <td style={{ padding: "0.75rem", fontFamily: "monospace", fontSize: "0.875rem" }}>{pod.ip || '-'}</td>
-                <td style={{ padding: "0.75rem", textAlign: "center" }}>
-                  <button
-                    onClick={() => handleDeletePod(pod)}
-                    style={{
-                      padding: "0.25rem 0.5rem",
-                      backgroundColor: "#dc3545",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                      fontWeight: "500"
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "#c82333";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "#dc3545";
-                    }}
-                    title={`Delete pod ${pod.name}`}
-                  >
-                    Delete
-                  </button>
-                </td>
+                {!readOnly && (
+                  <td style={{ padding: "0.75rem", textAlign: "center" }}>
+                    <button
+                      onClick={() => handleDeletePod(pod)}
+                      style={{
+                        padding: "0.25rem 0.5rem",
+                        backgroundColor: "#dc3545",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        fontSize: "0.75rem",
+                        cursor: "pointer",
+                        fontWeight: "500"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = "#c82333";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "#dc3545";
+                      }}
+                      title={`Delete pod ${pod.name}`}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

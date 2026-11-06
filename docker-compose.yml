@@ -15,6 +15,7 @@ services:
     # environment:
     #   - NAMESPACE=default
     #   - DOMAIN=localhost
+    #   - PODBOARD_READ_ONLY=true
     restart: unless-stopped
 
     # Optional: Health check

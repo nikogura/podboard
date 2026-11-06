@@ -29,6 +29,10 @@ spec:
         # Optional: Set default namespace
         - name: NAMESPACE
           value: "default"
+        # Optional: View-only mode. Removes the Delete button and the DELETE
+        # route. Pair it with a Role that lacks the delete verb.
+        # - name: PODBOARD_READ_ONLY
+        #   value: "true"
         # Optional: Set domain for cookies
         - name: DOMAIN
           value: "podboard.local"

@@ -43,6 +43,9 @@ var address string
 //nolint:gochecknoglobals // Cobra boilerplate
 var domain string
 
+//nolint:gochecknoglobals // Cobra boilerplate
+var readOnly bool
+
 // rootCmd represents the base command when called without any subcommands.
 //
 //nolint:gochecknoglobals // Cobra boilerplate
@@ -61,6 +64,11 @@ The server provides:
 - Namespace and cluster selector for filtering pods
 - Real-time updates like 'kubectl get pod --watch'
 - Regex support for label filtering (use =~ operator)
+- Pod deletion from the UI, unless read-only mode is on
+
+Read-only mode (--read-only or PODBOARD_READ_ONLY=true; default off):
+- The Delete button is not rendered and the pod DELETE route is not served
+- Pair it with RBAC that lacks the delete verb so the restriction holds at both layers
 
 Kubernetes configuration (first match wins):
 - KUBECONFIG: Path or path list defining every cluster shown; honored even inside a pod
@@ -88,7 +96,7 @@ Example (production deployment):
 		}()
 
 		// Run the server
-		err = podboard.RunServer(address, domain, logger)
+		err = podboard.RunServer(address, domain, readOnly, logger)
 		if err != nil {
 			logger.Fatal("Failed to start server", zap.Error(err))
 		}
@@ -110,4 +118,5 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "Info", "Log Level (Trace, Debug, Info, Warn, Error)")
 	rootCmd.Flags().StringVarP(&address, "bind-address", "b", "0.0.0.0:9999", "Address (host and port) on which to listen")
 	rootCmd.Flags().StringVarP(&domain, "domain", "d", "", "server domain name")
+	rootCmd.Flags().BoolVar(&readOnly, "read-only", false, "view-only mode: do not render the Delete button or serve the pod DELETE route (also "+podboard.EnvReadOnly+"=true)")
 }

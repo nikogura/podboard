@@ -28,3 +28,7 @@ export interface ClustersResponse {
 export interface NamespacesResponse {
   namespaces: string[];
 }
+
+export interface ConfigResponse {
+  readOnly: boolean;
+}

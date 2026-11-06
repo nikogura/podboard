@@ -63,12 +63,14 @@ Invoke-WebRequest -Uri "https://github.com/nikogura/podboard/releases/latest/dow
 ### Command Line Options
 - `--bind-address` (`-b`): Server address and port (default: `0.0.0.0:9999`)
 - `--domain` (`-d`): Server domain name for cookies
+- `--read-only`: View-only mode. The Delete button is not rendered and the pod `DELETE` route is not served (default: deletion enabled)
 - `--verbose` (`-v`): Enable verbose logging
 - `--log-level` (`-l`): Set log level (Trace, Debug, Info, Warn, Error)
 
 ### Environment Variables
 - `DOMAIN`: Application domain for cookies
 - `NAMESPACE`: Default namespace to monitor (default: `default`)
+- `PODBOARD_READ_ONLY`: `true` has the same effect as `--read-only`. Either source turns read-only mode on; a value that is not a boolean fails startup (default: `false`)
 - `KUBECONFIG`: Kubeconfig path, or an OS path list as kubectl accepts, that defines every cluster podboard shows. When set it is honored even inside a Pod (see below)
 - `PODBOARD_INFORMER_SYNC_TIMEOUT`: How long the first request for a cluster waits for its pod cache to fill before failing (Go duration, default: `30s`)
 - `PODBOARD_INFORMER_IDLE_TIMEOUT`: Drop a cluster's pod watch after this long with no requests; `0` keeps watches open forever (Go duration, default: `10m`)
@@ -108,12 +110,14 @@ the next request reopens it.
 
 ### Health & Status
 - `GET /health` - Health check endpoint
+- `GET /api/config` - Server options the UI adapts to (`readOnly`)
 
 ### Pod Management
 - `GET /api/pods` - List pods in namespace
   - Query params: `cluster`, `namespace`, `labelSelector`
 - `DELETE /api/pods/:namespace/:name` - Delete a pod
   - Query params: `cluster`
+  - Not registered in read-only mode; the server answers `404`
 
 ### Cluster & Namespace Discovery
 - `GET /api/clusters` - Available clusters (local mode only)
@@ -209,6 +213,7 @@ podboard/
 - Local development uses existing kubeconfig permissions
 - No authentication required (intended for trusted networks)
 - Pod deletion operations require appropriate RBAC permissions
+- For a view-only deployment set `--read-only` or `PODBOARD_READ_ONLY=true`, which removes the Delete button and the `DELETE` route, and grant the ServiceAccount no `delete` verb so the restriction holds at both layers
 
 ## Troubleshooting
 

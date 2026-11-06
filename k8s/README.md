@@ -14,6 +14,10 @@ Podboard requires the following Kubernetes permissions:
 - **pods (delete)**: Allow pod deletion from the web interface
   - ⚠️ **Namespace-restricted recommended**: Limit deletion to specific namespaces
   - ⚠️ **Cluster-wide dangerous**: Allows deletion of pods in any namespace
+  - For a view-only deployment, drop the `delete` verb from the Role **and** set
+    `PODBOARD_READ_ONLY=true` on the container. RBAC makes deletion fail; the
+    flag removes the Delete button and the `DELETE` route so there is nothing
+    to fail
 
 ## Security Considerations
 
