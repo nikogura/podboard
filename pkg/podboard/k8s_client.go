@@ -22,15 +22,13 @@ SOFTWARE.
 
 package podboard
 
-import (
-	"os"
-)
-
-func homeDir() (dir string) {
-	if h := os.Getenv("HOME"); h != "" {
+// homeDir returns the user's home directory from the environment, HOME on
+// POSIX or USERPROFILE on Windows, or empty when neither is set.
+func homeDir(getenv func(key string) (value string)) (dir string) {
+	if h := getenv("HOME"); h != "" {
 		dir = h
 		return dir
 	}
-	dir = os.Getenv("USERPROFILE") // Windows
+	dir = getenv("USERPROFILE")
 	return dir
 }

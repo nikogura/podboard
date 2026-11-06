@@ -69,12 +69,26 @@ Invoke-WebRequest -Uri "https://github.com/nikogura/podboard/releases/latest/dow
 ### Environment Variables
 - `DOMAIN`: Application domain for cookies
 - `NAMESPACE`: Default namespace to monitor (default: `default`)
+- `KUBECONFIG`: Kubeconfig path, or an OS path list as kubectl accepts, that defines every cluster podboard shows. When set it is honored even inside a Pod (see below)
 - `PODBOARD_INFORMER_SYNC_TIMEOUT`: How long the first request for a cluster waits for its pod cache to fill before failing (Go duration, default: `30s`)
 - `PODBOARD_INFORMER_IDLE_TIMEOUT`: Drop a cluster's pod watch after this long with no requests; `0` keeps watches open forever (Go duration, default: `10m`)
 
 ### Kubernetes Configuration
-- **In-cluster**: Automatically uses in-cluster service account
-- **Local**: Falls back to `~/.kube/config` for development
+podboard picks one mode at startup, in this order:
+1. **Explicit kubeconfig**: `KUBECONFIG` is set. Every context in it appears in
+   the cluster dropdown, and this wins even when podboard runs inside a Pod with
+   a ServiceAccount token. A single path must exist; a path list follows
+   kubectl's merge rules. The files are re-read on every request, so changes to
+   a mounted kubeconfig show up without a restart.
+2. **In-cluster**: `KUBECONFIG` is unset and a ServiceAccount token is mounted.
+   podboard watches the cluster it runs in and the cluster dropdown is hidden.
+3. **Local**: Otherwise `~/.kube/config`, for development.
+
+To run one podboard on a hub cluster that watches several spoke clusters, mount
+a kubeconfig holding a read-only context for each spoke and for the hub itself
+(`server: https://kubernetes.default.svc` with the mounted CA and token), and
+point `KUBECONFIG` at it. podboard is a plain multi-context viewer: whatever
+writes that file decides which clusters appear.
 
 ### How Pod Reads Work
 Pod data is served from an in-memory cache, not by listing pods on every poll.

@@ -62,9 +62,10 @@ The server provides:
 - Real-time updates like 'kubectl get pod --watch'
 - Regex support for label filtering (use =~ operator)
 
-Kubernetes configuration:
-- Uses in-cluster config when running in a pod
-- Falls back to ~/.kube/config for local development
+Kubernetes configuration (first match wins):
+- KUBECONFIG: Path or path list defining every cluster shown; honored even inside a pod
+- In-cluster config when running in a pod with a ServiceAccount token
+- ~/.kube/config for local development
 - NAMESPACE: Default namespace to monitor (default: default)
 - Pod reads are served from a per-cluster watch cache, not a LIST per poll
 - PODBOARD_INFORMER_SYNC_TIMEOUT: Wait for a cluster's cache to fill (default: 30s)

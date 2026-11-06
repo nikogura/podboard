@@ -42,34 +42,105 @@ type ClusterInfo struct {
 	Current bool   `json:"current"`
 }
 
+// EnvKubeconfig names the environment variable that selects kubeconfig mode.
+// It holds one path or an OS path list, exactly as kubectl reads it.
+const EnvKubeconfig = "KUBECONFIG"
+
 // KubeConfigService handles kubeconfig operations.
+//
+// Mode is chosen once at startup, in this precedence:
+//  1. KUBECONFIG set: kubeconfig mode, even inside a Pod. The file is the
+//     complete list of clusters to show, so a Pod watching several clusters
+//     mounts a kubeconfig with a context for each, its own included.
+//  2. A ServiceAccount token is mounted: in-cluster mode, one cluster.
+//  3. Otherwise: kubeconfig mode on ~/.kube/config.
 type KubeConfigService struct {
-	logger         *zap.Logger
-	inCluster      bool
+	logger    *zap.Logger
+	inCluster bool
+	// kubeconfigPath is the raw KUBECONFIG value (possibly a path list) or the
+	// home default. Empty only when no home directory could be found.
 	kubeconfigPath string
 }
 
-// NewKubeConfigService creates a new kubeconfig service.
+// NewKubeConfigService creates a kubeconfig service from the process environment.
 func NewKubeConfigService(logger *zap.Logger) (service *KubeConfigService) {
+	service = newKubeConfigService(logger, os.Getenv, inClusterAvailable)
+	return service
+}
+
+// newKubeConfigService builds the service from injectable environment and
+// in-cluster probes so mode selection is testable outside a Pod.
+func newKubeConfigService(logger *zap.Logger, getenv func(key string) (value string), inCluster func() (available bool)) (service *KubeConfigService) {
 	service = &KubeConfigService{
 		logger: logger,
 	}
 
-	// Check if running in cluster
-	_, err := rest.InClusterConfig()
-	service.inCluster = err == nil
-
-	if !service.inCluster {
-		// Determine kubeconfig path
-		service.kubeconfigPath = os.Getenv("KUBECONFIG")
-		if service.kubeconfigPath == "" {
-			if home := homeDir(); home != "" {
-				service.kubeconfigPath = filepath.Join(home, ".kube", "config")
-			}
-		}
+	if explicit := getenv(EnvKubeconfig); explicit != "" {
+		service.kubeconfigPath = explicit
+		service.warnIfKubeconfigMissing()
+		logger.Info("Using kubeconfig from "+EnvKubeconfig, zap.String("kubeconfig", explicit))
+		return service
 	}
 
+	if inCluster() {
+		service.inCluster = true
+		logger.Info("Using in-cluster configuration")
+		return service
+	}
+
+	if home := homeDir(getenv); home != "" {
+		service.kubeconfigPath = filepath.Join(home, ".kube", "config")
+	}
+	logger.Info("Using default kubeconfig", zap.String("kubeconfig", service.kubeconfigPath))
+
 	return service
+}
+
+// inClusterAvailable reports whether a ServiceAccount token is mounted.
+func inClusterAvailable() (available bool) {
+	_, err := rest.InClusterConfig()
+	available = err == nil
+	return available
+}
+
+// warnIfKubeconfigMissing logs when an explicit KUBECONFIG names files that do
+// not exist yet. Startup continues: a mounted Secret may appear later, and
+// every request re-reads the files.
+func (kcs *KubeConfigService) warnIfKubeconfigMissing() {
+	for _, path := range filepath.SplitList(kcs.kubeconfigPath) {
+		_, err := os.Stat(path)
+		if err != nil {
+			kcs.logger.Warn("Kubeconfig named by "+EnvKubeconfig+" is not readable", zap.String("kubeconfig", path), zap.Error(err))
+		}
+	}
+}
+
+// loadKubeconfig reads the configured kubeconfig path or path list, merging
+// multiple files with kubectl's precedence rules, fresh on every call so edits
+// to a mounted file are picked up without a restart.
+func (kcs *KubeConfigService) loadKubeconfig() (config *clientcmdapi.Config, err error) {
+	if kcs.kubeconfigPath == "" {
+		err = errors.New("kubeconfig path not found")
+		return config, err
+	}
+
+	// A single path is explicit: a missing file is an error, as with kubectl.
+	// A path list follows kubectl's merge rules, where missing entries are skipped.
+	paths := filepath.SplitList(kcs.kubeconfigPath)
+	rules := clientcmd.ClientConfigLoadingRules{}
+	if len(paths) == 1 {
+		rules.ExplicitPath = paths[0]
+	} else {
+		rules.Precedence = paths
+	}
+
+	config, err = rules.Load()
+	if err != nil {
+		err = fmt.Errorf("failed to load kubeconfig %q: %w", kcs.kubeconfigPath, err)
+		return config, err
+	}
+
+	return config, err
 }
 
 // IsInCluster returns true if running inside a Kubernetes cluster.
@@ -85,16 +156,9 @@ func (kcs *KubeConfigService) GetClusters() (clusters []ClusterInfo, err error) 
 		return clusters, err
 	}
 
-	if kcs.kubeconfigPath == "" {
-		err = errors.New("kubeconfig path not found")
-		return clusters, err
-	}
-
-	// Load the kubeconfig file
 	var config *clientcmdapi.Config
-	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	config, err = kcs.loadKubeconfig()
 	if err != nil {
-		err = fmt.Errorf("failed to load kubeconfig: %w", err)
 		return clusters, err
 	}
 
@@ -145,9 +209,8 @@ func (kcs *KubeConfigService) GetCurrentContext() (currentContext string, err er
 	}
 
 	var config *clientcmdapi.Config
-	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	config, err = kcs.loadKubeconfig()
 	if err != nil {
-		err = fmt.Errorf("failed to load kubeconfig: %w", err)
 		return currentContext, err
 	}
 
@@ -170,9 +233,8 @@ func (kcs *KubeConfigService) CreateClientForCluster(clusterName string) (client
 
 	// Load kubeconfig
 	var config *clientcmdapi.Config
-	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	config, err = kcs.loadKubeconfig()
 	if err != nil {
-		err = fmt.Errorf("failed to load kubeconfig: %w", err)
 		return client, err
 	}
 
@@ -231,9 +293,8 @@ func (kcs *KubeConfigService) GetCurrentCluster() (clusterName string, err error
 	}
 
 	var config *clientcmdapi.Config
-	config, err = clientcmd.LoadFromFile(kcs.kubeconfigPath)
+	config, err = kcs.loadKubeconfig()
 	if err != nil {
-		err = fmt.Errorf("failed to load kubeconfig: %w", err)
 		return clusterName, err
 	}
 
